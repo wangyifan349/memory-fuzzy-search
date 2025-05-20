@@ -1,7 +1,7 @@
 # 🧐 In-Memory Fuzzy Search Tool
 
-> This is a **pure Python** fuzzy search utility that helps you quickly find content similar to your search keywords from大量 texts and code stored in program memory.  
-> It supports two matching algorithms, ignores case sensitivity, and requires no third-party libraries for easy integration 🎉
+> This is a pure Python fuzzy search utility that helps you quickly find content similar to your search keywords from large amounts of texts and code stored in program memory.
+It supports two matching algorithms, ignores case sensitivity, and requires no third-party libraries for easy integration 🎉
 
 ---
 
