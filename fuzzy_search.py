@@ -1,6 +1,7 @@
 import math
 from collections import Counter
 from typing import Dict, Tuple
+import jieba  # 引入jieba库进行中文分词
 
 # 示例QA字典
 qa_dict = {
@@ -12,8 +13,8 @@ qa_dict = {
 
 # 简易词频向量化函数，将文本转为小写分词后的Counter对象
 def text_to_vector(text: str) -> Counter:
-    # 转小写，去除部分标点符号，简单分词空格切分
-    words = text.lower().replace('？', '').replace('，', '').replace('。', '').split()
+    # 使用jieba进行中文分词
+    words = list(jieba.cut(text))
     # 返回词频统计
     return Counter(words)
 
@@ -107,7 +108,6 @@ def search_qa(query: str, qa_data: Dict[str, str], method: str = 'vector') -> Tu
     else:
         raise ValueError("method参数必须是'vector'或'lcs_lev'")
     return best_answer, max_score
-
 
 if __name__ == "__main__":
     print("欢迎使用QA问答系统，请输入您的问题（输入exit退出）：")
