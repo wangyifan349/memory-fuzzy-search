@@ -1,13 +1,17 @@
+import sys
 import json
-import tkinter as tk
-from tkinter import scrolledtext, filedialog, messagebox, ttk
 import threading
-import os
 import hashlib
+import os
 
-# LCS algorithm (non-nested, no list comprehension)
+from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QTextEdit,
+                             QLineEdit, QPushButton, QLabel, QFileDialog, QMessageBox)
+from PyQt5.QtCore import Qt, pyqtSignal, QObject
+
+# ---------------------------------------------------------
+
 def lcs_length(str1, str2):
-    """Compute the length of the longest common subsequence between two strings"""
+    """计算两个字符串的最长公共子序列长度"""
     m = len(str1)
     n = len(str2)
     dp = []
@@ -16,7 +20,7 @@ def lcs_length(str1, str2):
         for j in range(n+1):
             dp_row.append(0)
         dp.append(dp_row)
-
+    # 动态规划计算LCS长度
     for i in range(1, m+1):
         for j in range(1, n+1):
             if str1[i-1] == str2[j-1]:
@@ -28,8 +32,10 @@ def lcs_length(str1, str2):
                     dp[i][j] = dp[i][j-1]
     return dp[m][n]
 
+# ---------------------------------------------------------
+
 def similarity_score(query, question):
-    """Calculate similarity score based on LCS"""
+    """基于LCS计算相似度得分"""
     lcs = lcs_length(query, question)
     avg_len = (len(query) + len(question)) / 2
     if avg_len == 0:
@@ -37,29 +43,33 @@ def similarity_score(query, question):
     score = lcs / avg_len
     return score
 
+# ---------------------------------------------------------
+
 class QASystem:
+    """问答系统类"""
     def __init__(self):
-        """Initialize the QA system with an empty QA list"""
-        self.qa_list = []
-        self.qa_hash_set = set()  # For de-duplication
-        self.history = []
+        self.qa_list = []          # 存储QA对的列表
+        self.qa_hash_set = set()   # 用于去重的哈希集合
+        self.history = []          # 记录对话历史
 
     def add_qa_list(self, qa_list):
-        """Add a list of QA pairs to the system with de-duplication"""
+        """添加QA列表，并进行去重处理"""
         added_count = 0
         for qa in qa_list:
-            # Create a unique hash for each QA pair
-            qa_hash = hashlib.md5((qa['question'] + qa['answer']).encode('utf-8')).hexdigest()
+            question = qa['question'].strip().replace('\n', ' ')
+            answer = qa['answer'].strip().replace('\n', ' ')
+            # 生成QA对的唯一哈希值
+            qa_hash = hashlib.md5((question + answer).encode('utf-8')).hexdigest()
             if qa_hash not in self.qa_hash_set:
-                self.qa_list.append(qa)
+                self.qa_list.append({'question': question, 'answer': answer})
                 self.qa_hash_set.add(qa_hash)
                 added_count += 1
         return added_count
 
     def find_best_match(self, user_question, threshold=0.3):
-        """Find the best matching answer"""
+        """查找最佳匹配的答案"""
         best_score = 0
-        best_answer = "Sorry, I cannot answer your question at the moment."
+        best_answer = "抱歉，我暂时无法回答您的问题。"
         for qa in self.qa_list:
             score = similarity_score(user_question, qa['question'])
             if score > best_score:
@@ -68,147 +78,192 @@ class QASystem:
         if best_score >= threshold:
             return best_answer
         else:
-            return "Sorry, I cannot answer your question at the moment."
+            return "抱歉，我暂时无法回答您的问题。"
 
     def ask(self, user_question):
-        """Process user question"""
+        """处理用户提问并返回答案"""
         answer = self.find_best_match(user_question)
         self.history.append({'question': user_question, 'answer': answer})
         return answer
 
+# ---------------------------------------------------------
+
 def load_qa_from_file(filepath):
-    """Load QA list from JSON file"""
+    """从JSON文件加载QA列表"""
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
             qa_list = json.load(f)
             return qa_list
     except Exception as e:
-        messagebox.showerror("Error", f"Failed to load QA data: {e}")
+        QMessageBox.critical(None, "错误", f"加载QA数据失败：{e}")
         return None
 
-class ChatWindow:
+# ---------------------------------------------------------
+
+class SignalBus(QObject):
+    """用于线程间通信的信号总线"""
+    display_message_signal = pyqtSignal(str, str)
+    update_qa_count_signal = pyqtSignal(int)
+
+# ---------------------------------------------------------
+
+class ChatWindow(QWidget):
+    """聊天窗口类"""
     def __init__(self):
-        """Initialize chat window"""
+        super().__init__()
         self.qa_system = QASystem()
-        self.create_main_window()
-        self.create_widgets()
+        self.signal_bus = SignalBus()
+        self.init_ui()
+        self.connect_signals()
         self.update_qa_count()
 
-    def create_main_window(self):
-        """Create main window with improved interface"""
-        self.window = tk.Tk()
-        self.window.title("Intelligent QA System")
-        self.window.geometry("700x600")
-        self.window.configure(bg="#E8E8E8")
-        self.window.resizable(False, False)
+    def init_ui(self):
+        """初始化界面"""
+        self.setWindowTitle("智能问答系统")
+        self.setGeometry(100, 100, 800, 600)
+        self.setStyleSheet("background-color: #F0F0F0;")
+        self.setFixedSize(800, 600)
 
-    def create_widgets(self):
-        """Create GUI widgets"""
-        # Style configuration
-        style = ttk.Style()
-        style.theme_use('default')
-        style.configure('TButton', font=('Helvetica', 12))
-        style.configure('TLabel', font=('Helvetica', 12), background='#E8E8E8')
-        style.configure('TRadiobutton', font=('Helvetica', 12), background='#E8E8E8')
+        # 主布局
+        main_layout = QVBoxLayout()
 
-        # Menu bar
-        menu_bar = tk.Menu(self.window)
-        file_menu = tk.Menu(menu_bar, tearoff=0)
-        file_menu.add_command(label="Load QA Data", command=self.load_qa_files)
-        file_menu.add_separator()
-        file_menu.add_command(label="Exit", command=self.window.quit)
-        menu_bar.add_cascade(label="File", menu=file_menu)
-        self.window.config(menu=menu_bar)
+        # 菜单按钮布局
+        menu_layout = QHBoxLayout()
+        self.load_button = QPushButton("加载QA数据")
+        self.load_button.setFixedHeight(40)
+        self.load_button.setStyleSheet("font-size: 16px;")
+        self.clear_button = QPushButton("清空聊天")
+        self.clear_button.setFixedHeight(40)
+        self.clear_button.setStyleSheet("font-size: 16px;")
+        self.exit_button = QPushButton("退出")
+        self.exit_button.setFixedHeight(40)
+        self.exit_button.setStyleSheet("font-size: 16px;")
+        menu_layout.addWidget(self.load_button)
+        menu_layout.addWidget(self.clear_button)
+        menu_layout.addWidget(self.exit_button)
+        menu_layout.addStretch()
 
-        # Chat display area
-        self.chat_display = scrolledtext.ScrolledText(self.window, wrap=tk.WORD, font=('Helvetica', 12))
-        self.chat_display.place(x=10, y=10, width=680, height=450)
-        self.chat_display.configure(state='disabled', bg="#FFFFFF")
+        # 聊天显示区域
+        self.chat_display = QTextEdit()
+        self.chat_display.setReadOnly(True)
+        self.chat_display.setStyleSheet("font-size: 16px; background-color: white;")
+        self.chat_display.setFixedHeight(420)
 
-        # QA count label
-        self.qa_count_label = ttk.Label(self.window, text="QA Pairs Loaded: 0")
-        self.qa_count_label.place(x=10, y=470)
+        # QA计数标签
+        self.qa_count_label = QLabel("已加载QA对数：0")
+        self.qa_count_label.setStyleSheet("font-size: 14px;")
 
-        # User input box
-        self.user_input = ttk.Entry(self.window, font=('Helvetica', 12))
-        self.user_input.place(x=10, y=500, width=580, height=30)
-        self.user_input.bind("<Return>", self.send_message)
+        # 输入区域布局
+        input_layout = QHBoxLayout()
+        self.user_input = QLineEdit()
+        self.user_input.setStyleSheet("font-size: 16px;")
+        self.user_input.setPlaceholderText("请输入您的问题...")
+        self.send_button = QPushButton("发送")
+        self.send_button.setFixedWidth(80)
+        self.send_button.setStyleSheet("font-size: 16px;")
+        input_layout.addWidget(self.user_input)
+        input_layout.addWidget(self.send_button)
 
-        # Send button
-        self.send_button = ttk.Button(self.window, text="Send", command=self.send_message)
-        self.send_button.place(x=600, y=500, width=80, height=30)
+        # 组装布局
+        main_layout.addLayout(menu_layout)
+        main_layout.addWidget(self.chat_display)
+        main_layout.addWidget(self.qa_count_label)
+        main_layout.addLayout(input_layout)
+        self.setLayout(main_layout)
 
-        # Clear chat button
-        self.clear_button = ttk.Button(self.window, text="Clear Chat", command=self.clear_chat)
-        self.clear_button.place(x=600, y=540, width=80, height=30)
+    def connect_signals(self):
+        """连接信号和槽"""
+        self.load_button.clicked.connect(self.load_qa_files)
+        self.clear_button.clicked.connect(self.clear_chat)
+        self.exit_button.clicked.connect(self.close)
+        self.send_button.clicked.connect(self.send_message)
+        self.user_input.returnPressed.connect(self.send_message)
+        self.signal_bus.display_message_signal.connect(self.display_message)
+        self.signal_bus.update_qa_count_signal.connect(self.update_qa_count_label)
 
     def load_qa_files(self):
-        """Load multiple QA data files in a separate thread"""
+        """加载QA数据文件（新线程）"""
         threading.Thread(target=self._load_qa_files_thread).start()
 
     def _load_qa_files_thread(self):
-        """Thread function to load QA data files"""
-        file_paths = filedialog.askopenfilenames(title='Select QA Data Files', filetypes=[('JSON files', '*.json')])
-        if file_paths:
+        """QA数据加载线程函数"""
+        options = QFileDialog.Options()
+        files, _ = QFileDialog.getOpenFileNames(self, "选择QA数据文件", "",
+                                                "JSON文件 (*.json);;所有文件 (*)", options=options)
+        if files:
             total_added = 0
-            for file_path in file_paths:
+            total_files = len(files)
+            for file_path in files:
                 qa_list = load_qa_from_file(file_path)
                 if qa_list is not None:
                     added_count = self.qa_system.add_qa_list(qa_list)
                     total_added += added_count
                     file_name = os.path.basename(file_path)
-                    self.display_message("System", f"Loaded {added_count} new QA pairs from '{file_name}'")
-            self.update_qa_count()
+                    self.signal_bus.display_message_signal.emit("系统",
+                            f"从 '{file_name}' 加载了 {added_count} 个新的QA对。")
+            self.signal_bus.update_qa_count_signal.emit(len(self.qa_system.qa_list))
             if total_added > 0:
-                self.display_message("System", f"Total {total_added} new QA pairs loaded. You can start asking questions.")
+                self.signal_bus.display_message_signal.emit("系统",
+                        f"已从 {total_files} 个文件加载 {total_added} 个新的QA对。")
             else:
-                self.display_message("System", "No new QA pairs were added.")
+                self.signal_bus.display_message_signal.emit("系统", "没有添加新的QA对。")
         else:
-            self.display_message("System", "No files were selected.")
+            self.signal_bus.display_message_signal.emit("系统", "未选择任何文件。")
+
+    def update_qa_count_label(self, count):
+        """更新QA计数标签"""
+        self.qa_count_label.setText(f"已加载QA对数：{count}")
 
     def update_qa_count(self):
-        """Update the QA count label"""
+        """初始更新QA计数标签"""
         count = len(self.qa_system.qa_list)
-        self.qa_count_label.config(text=f"QA Pairs Loaded: {count}")
+        self.qa_count_label.setText(f"已加载QA对数：{count}")
 
-    def send_message(self, event=None):
-        """Send user message"""
+    def send_message(self):
+        """发送用户消息"""
         if not self.qa_system.qa_list:
-            messagebox.showwarning("Notice", "Please load QA data first.")
+            QMessageBox.warning(self, "提示", "请先加载QA数据。")
             return
-        user_text = self.user_input.get().strip()
+        user_text = self.user_input.text().strip()
         if user_text == "":
             return
-        # Display user message
-        self.display_message("User", user_text)
-        # Get response
+        self.display_message("用户", user_text)
         threading.Thread(target=self._get_bot_response, args=(user_text,)).start()
-        # Clear input box
-        self.user_input.delete(0, tk.END)
+        self.user_input.clear()
 
     def _get_bot_response(self, user_text):
-        """Get bot response in a separate thread"""
+        """获取机器人回复（新线程）"""
         bot_response = self.qa_system.ask(user_text)
-        # Display bot response
-        self.display_message("Assistant", bot_response)
+        self.signal_bus.display_message_signal.emit("小助手", bot_response)
 
     def display_message(self, sender, message):
-        """Display message in chat"""
-        self.chat_display.configure(state='normal')
-        self.chat_display.insert(tk.END, f"{sender}: {message}\n\n")
-        self.chat_display.see(tk.END)
-        self.chat_display.configure(state='disabled')
+        """在聊天窗口显示消息"""
+        self.chat_display.append(f"<b>{sender}：</b> {message}<br><br>")
+        self.chat_display.moveCursor(self.chat_display.textCursor().End)
 
     def clear_chat(self):
-        """Clear chat history"""
-        self.chat_display.configure(state='normal')
-        self.chat_display.delete('1.0', tk.END)
-        self.chat_display.configure(state='disabled')
+        """清空聊天历史"""
+        self.chat_display.clear()
 
-    def run(self):
-        """Run the chat window"""
-        self.window.mainloop()
+    def closeEvent(self, event):
+        """重写关闭事件，添加确认提示"""
+        reply = QMessageBox.question(self, '退出', '您确定要退出吗？',
+                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            event.accept()
+        else:
+            event.ignore()
+
+# ---------------------------------------------------------
+
+def main():
+    """主函数，运行聊天应用程序"""
+    app = QApplication(sys.argv)
+    window = ChatWindow()
+    window.show()
+    sys.exit(app.exec_())
+
+# ---------------------------------------------------------
 
 if __name__ == '__main__':
-    chat_window = ChatWindow()
-    chat_window.run()
+    main()
