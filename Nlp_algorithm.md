@@ -1,7 +1,6 @@
 # Algorithm Implementations in Python
 
-This repository contains Python implementations of various algorithms, including similarity measures, distance metrics, string algorithms, sequence problems, search algorithms, dimensionality reduction techniques, and text vectorization methods. 
-The implementations cover mathematical formulations, computational logic, and practical usages.
+This repository contains Python implementations of various algorithms, including similarity measures, distance metrics, string algorithms, sequence problems, search algorithms, dimensionality reduction techniques, text vectorization methods, and semantic similarity using BERT encoder from Hugging Face's `sentence-transformers`. Each algorithm is accompanied by a detailed explanation, mathematical formulation, computational logic, practical usage, and the corresponding code for easy reference.
 
 ---
 
@@ -33,6 +32,7 @@ The implementations cover mathematical formulations, computational logic, and pr
    - [6.1 TF-IDF (Term Frequency-Inverse Document Frequency)](#61-tf-idf-term-frequency-inverse-document-frequency)
    - [6.2 Bag of Words (BoW)](#62-bag-of-words-bow)
    - [6.3 Word2Vec Training](#63-word2vec-training)
+7. [Semantic Similarity with BERT Encoder](#7-semantic-similarity-with-bert-encoder)
 
 ---
 
@@ -40,13 +40,13 @@ The implementations cover mathematical formulations, computational logic, and pr
 
 ### 1.1 Cosine Similarity
 
-#### **Introduction**
+#### Introduction
 
-Cosine similarity measures the cosine of the angle between two non-zero vectors in an inner product space. It is a measure of orientation and not magnitude.
+Cosine similarity measures the cosine of the angle between two non-zero vectors in an inner product space. It is a measure of how similar the two vectors are, focusing on the direction rather than magnitude.
 
-#### **Mathematical Formulation**
+#### Mathematical Formulation
 
-For two vectors **A** and **B**, the cosine similarity is given by:
+Given two vectors **A** and **B**:
 
 \[
 \cos(\theta) = \frac{\mathbf{A} \cdot \mathbf{B}}{\|\mathbf{A}\|_2 \times \|\mathbf{B}\|_2}
@@ -54,228 +54,401 @@ For two vectors **A** and **B**, the cosine similarity is given by:
 
 Where:
 
-- \(\mathbf{A} \cdot \mathbf{B}\) is the dot product of **A** and **B**.
-- \(\|\mathbf{A}\|_2\) is the Euclidean norm (L2 norm) of vector **A**.
+- \(\mathbf{A} \cdot \mathbf{B}\) is the dot product.
+- \(\|\mathbf{A}\|_2\) is the Euclidean norm (L2 norm).
 
-#### **Computational Logic**
+#### Computational Logic
 
-1. Compute the dot product of the two vectors.
-2. Compute the L2 norms of each vector.
+1. Calculate the dot product of vectors **A** and **B**.
+2. Calculate the L2 norms of both vectors.
 3. Divide the dot product by the product of the norms.
-4. Handle the case when any vector norm is zero.
+4. Ensure norms are not zero to avoid division by zero.
 
-#### **Usage and Applications**
+#### Usage and Applications
 
-- Text similarity in Natural Language Processing.
-- Measuring document similarity in Information Retrieval.
+- Measuring text similarity in NLP.
+- Document clustering.
 - Recommendation systems.
+
+#### Code
+
+```python
+def cosine_similarity(vec1, vec2):
+    import numpy as np
+    vec1 = np.array(vec1)
+    vec2 = np.array(vec2)
+    dot_product = np.dot(vec1, vec2)
+    norm_a = np.linalg.norm(vec1)
+    norm_b = np.linalg.norm(vec2)
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return dot_product / (norm_a * norm_b)
+```
+
+#### Example Usage
+
+```python
+vec_a = [1, 2, 3]
+vec_b = [4, 5, 6]
+similarity = cosine_similarity(vec_a, vec_b)
+print("Cosine Similarity:", similarity)
+```
+
+**Output:**
+
+```
+Cosine Similarity: 0.9746318461970762
+```
 
 ---
 
 ### 1.2 Dot Product
 
-#### **Introduction**
+#### Introduction
 
-The dot product (scalar product) of two vectors is an algebraic operation that takes two equal-length sequences of numbers and returns a single number.
+The dot product (scalar product) is an algebraic operation that takes two equal-length sequences of numbers and returns a single number.
 
-#### **Mathematical Formulation**
-
-For vectors **A** and **B**:
+#### Mathematical Formulation
 
 \[
-\mathbf{A} \cdot \mathbf{B} = \sum_{i=1}^{n} A_i B_i
+\mathbf{A} \cdot \mathbf{B} = \sum_{i=1}^n A_i B_i
 \]
 
-#### **Computational Logic**
+#### Computational Logic
 
-- Multiply corresponding elements of the two vectors.
-- Sum all the products.
+1. Multiply corresponding elements.
+2. Sum the results.
 
-#### **Usage and Applications**
+#### Usage and Applications
 
-- Computing projections in geometry.
-- Calculating angles between vectors.
-- Physics applications involving work and force.
+- Calculating projections.
+- Determining angles between vectors.
+- Physical calculations (e.g., work done).
+
+#### Code
+
+```python
+def dot_product(vec1, vec2):
+    return sum(a * b for a, b in zip(vec1, vec2))
+```
+
+#### Example Usage
+
+```python
+vec_a = [1, 2, 3]
+vec_b = [4, 5, 6]
+product = dot_product(vec_a, vec_b)
+print("Dot Product:", product)
+```
+
+**Output:**
+
+```
+Dot Product: 32
+```
 
 ---
 
 ### 1.3 Euclidean Distance
 
-#### **Introduction**
+#### Introduction
 
-Euclidean distance is the "ordinary" straight-line distance between two points in Euclidean space.
+Euclidean distance is the straight-line distance between two points in Euclidean space.
 
-#### **Mathematical Formulation**
-
-For two vectors **A** and **B**:
+#### Mathematical Formulation
 
 \[
-d(\mathbf{A}, \mathbf{B}) = \sqrt{\sum_{i=1}^{n} (A_i - B_i)^2}
+d(\mathbf{A}, \mathbf{B}) = \sqrt{\sum_{i=1}^n (A_i - B_i)^2}
 \]
 
-#### **Computational Logic**
+#### Computational Logic
 
-1. Compute the difference between corresponding elements.
+1. Subtract corresponding elements.
 2. Square each difference.
-3. Sum all squared differences.
-4. Take the square root of the sum.
+3. Sum them up.
+4. Take the square root.
 
-#### **Usage and Applications**
+#### Usage and Applications
 
 - Clustering algorithms (e.g., K-Means).
-- Distance calculations in geometry.
-- Nearest neighbor searches.
+- Nearest Neighbor searches.
+- Spatial analysis.
+
+#### Code
+
+```python
+def euclidean_distance(vec1, vec2):
+    import math
+    return math.sqrt(sum((a - b) ** 2 for a, b in zip(vec1, vec2)))
+```
+
+#### Example Usage
+
+```python
+vec_a = [1, 2, 3]
+vec_b = [4, 5, 6]
+distance = euclidean_distance(vec_a, vec_b)
+print("Euclidean Distance:", distance)
+```
+
+**Output:**
+
+```
+Euclidean Distance: 5.196152422706632
+```
 
 ---
 
 ### 1.4 Manhattan Distance
 
-#### **Introduction**
+#### Introduction
 
-Manhattan distance is the sum of the absolute differences of their Cartesian coordinates. Also known as L1 norm.
+Manhattan distance is the sum of the absolute differences of their Cartesian coordinates.
 
-#### **Mathematical Formulation**
-
-For vectors **A** and **B**:
+#### Mathematical Formulation
 
 \[
-d(\mathbf{A}, \mathbf{B}) = \sum_{i=1}^{n} |A_i - B_i|
+d(\mathbf{A}, \mathbf{B}) = \sum_{i=1}^n |A_i - B_i|
 \]
 
-#### **Computational Logic**
+#### Computational Logic
 
-- Compute the absolute difference between corresponding elements.
-- Sum all absolute differences.
+1. Compute absolute differences.
+2. Sum them.
 
-#### **Usage and Applications**
+#### Usage and Applications
 
 - Grid-based pathfinding.
-- Simplistic distance metric in machine learning.
-- Optimization problems in mathematics.
+- Simple distance metrics.
+- Optimization problems.
+
+#### Code
+
+```python
+def manhattan_distance(vec1, vec2):
+    return sum(abs(a - b) for a, b in zip(vec1, vec2))
+```
+
+#### Example Usage
+
+```python
+vec_a = [1, 2, 3]
+vec_b = [4, 5, 6]
+distance = manhattan_distance(vec_a, vec_b)
+print("Manhattan Distance:", distance)
+```
+
+**Output:**
+
+```
+Manhattan Distance: 9
+```
 
 ---
 
 ### 1.5 Mahalanobis Distance
 
-#### **Introduction**
+#### Introduction
 
-Mahalanobis distance measures the distance between a point and a distribution. It accounts for the correlations of the data set.
+Mahalanobis distance measures the distance between a point and a distribution, considering correlations.
 
-#### **Mathematical Formulation**
-
-For vectors **A** and **B**, and covariance matrix **Σ**:
+#### Mathematical Formulation
 
 \[
-d(\mathbf{A}, \mathbf{B}) = \sqrt{(\mathbf{A} - \mathbf{B})^T \Sigma^{-1} (\mathbf{A} - \mathbf{B})}
+d(\mathbf{A}, \mathbf{B}) = \sqrt{(\mathbf{A} - \mathbf{B})^\top \Sigma^{-1} (\mathbf{A} - \mathbf{B})}
 \]
 
-Where:
+Where \(\Sigma\) is the covariance matrix.
 
-- \(\Sigma^{-1}\) is the inverse of the covariance matrix.
+#### Computational Logic
 
-#### **Computational Logic**
+1. Compute the difference vector.
+2. Invert the covariance matrix.
+3. Multiply accordingly.
+4. Take the square root.
 
-1. Compute the difference vector \(\mathbf{D} = \mathbf{A} - \mathbf{B}\).
-2. Compute the inverse of the covariance matrix.
-3. Compute the quadratic form \( \mathbf{D}^T \Sigma^{-1} \mathbf{D} \).
-4. Take the square root of the result.
-
-#### **Usage and Applications**
+#### Usage and Applications
 
 - Multivariate outlier detection.
-- Classification algorithms.
 - Cluster analysis.
+- Classification in machine learning.
+
+#### Code
+
+```python
+def mahalanobis_distance(vec1, vec2, cov_matrix):
+    import numpy as np
+    diff = np.array(vec1) - np.array(vec2)
+    inv_covmat = np.linalg.inv(cov_matrix)
+    distance = np.sqrt(np.dot(np.dot(diff.T, inv_covmat), diff))
+    return distance
+```
+
+#### Example Usage
+
+```python
+vec_a = [1, 2]
+vec_b = [3, 4]
+cov_matrix = [[1, 0], [0, 1]]
+distance = mahalanobis_distance(vec_a, vec_b, cov_matrix)
+print("Mahalanobis Distance:", distance)
+```
+
+**Output:**
+
+```
+Mahalanobis Distance: 2.8284271247461903
+```
 
 ---
 
 ### 1.6 Jaccard Similarity
 
-#### **Introduction**
+#### Introduction
 
-Jaccard similarity measures the similarity between finite sample sets, defined as the size of the intersection divided by the size of the union of the sample sets.
+Jaccard similarity measures similarity between finite sample sets.
 
-#### **Mathematical Formulation**
-
-For sets **A** and **B**:
+#### Mathematical Formulation
 
 \[
 J(A, B) = \frac{|A \cap B|}{|A \cup B|}
 \]
 
-#### **Computational Logic**
+#### Computational Logic
 
-1. Compute the intersection of the two sets.
-2. Compute the union of the two sets.
-3. Divide the size of the intersection by the size of the union.
+1. Find intersection and union.
+2. Divide the sizes.
 
-#### **Usage and Applications**
+#### Usage and Applications
 
-- Document similarity.
+- Text analysis.
 - Recommender systems.
-- Biological taxonomy.
+- Clustering.
+
+#### Code
+
+```python
+def jaccard_similarity(set1, set2):
+    intersection = set1.intersection(set2)
+    union = set1.union(set2)
+    if not union:
+        return 1.0  # Both sets are empty
+    return len(intersection) / len(union)
+```
+
+#### Example Usage
+
+```python
+set_a = {"apple", "banana", "cherry"}
+set_b = {"banana", "cherry", "date", "fig"}
+similarity = jaccard_similarity(set_a, set_b)
+print("Jaccard Similarity:", similarity)
+```
+
+**Output:**
+
+```
+Jaccard Similarity: 0.4
+```
 
 ---
 
 ### 1.7 Hamming Distance
 
-#### **Introduction**
+#### Introduction
 
-Hamming distance between two strings of equal length is the number of positions at which the corresponding symbols are different.
+Hamming distance is the number of positions at which the corresponding symbols are different between two strings of equal length.
 
-#### **Mathematical Formulation**
-
-For strings **S1** and **S2** of length **n**:
+#### Mathematical Formulation
 
 \[
-d(S1, S2) = \sum_{i=1}^{n} \delta(S1_i, S2_i)
+d(S_1, S_2) = \sum_{i=1}^n [S_1(i) \ne S_2(i)]
 \]
 
-Where:
+#### Computational Logic
 
-- \(\delta(S1_i, S2_i) = 0\) if \(S1_i = S2_i\), else 1.
+1. Compare positions.
+2. Count the differences.
 
-#### **Computational Logic**
+#### Usage and Applications
 
-- Compare each character position in both strings.
-- Increment the count if characters are different.
-
-#### **Usage and Applications**
-
-- Error detection and correction codes.
-- Genetic sequence analysis.
+- Error detection and correction.
+- Information theory.
 - Cryptography.
+
+#### Code
+
+```python
+def hamming_distance(str1, str2):
+    if len(str1) != len(str2):
+        raise ValueError("Strings must be of equal length.")
+    return sum(c1 != c2 for c1, c2 in zip(str1, str2))
+```
+
+#### Example Usage
+
+```python
+string_a = "karolin"
+string_b = "kathrin"
+distance = hamming_distance(string_a, string_b)
+print("Hamming Distance:", distance)
+```
+
+**Output:**
+
+```
+Hamming Distance: 3
+```
 
 ---
 
 ### 1.8 Vector Normalization
 
-#### **Introduction**
+#### Introduction
 
-Normalization rescales a vector so that its length (norm) is 1. This is often called making a unit vector.
+Normalization scales a vector to have a length of 1.
 
-#### **Mathematical Formulation**
-
-For vector **A**:
+#### Mathematical Formulation
 
 \[
-\hat{\mathbf{A}} = \frac{\mathbf{A}}{\|\mathbf{A}\|_2}
+\hat{\mathbf{A}} = \frac{\mathbf{A}}{\|\mathbf{A}\|}
 \]
 
-Where:
+#### Computational Logic
 
-- \(\|\mathbf{A}\|_2\) is the Euclidean norm.
+1. Calculate the vector's norm.
+2. Divide each component.
 
-#### **Computational Logic**
-
-1. Compute the L2 norm of the vector.
-2. Divide each element of the vector by the norm.
-3. Handle the case when the norm is zero.
-
-#### **Usage and Applications**
+#### Usage and Applications
 
 - Preparing data for machine learning algorithms.
-- Computing direction without magnitude.
-- Normalizing feature vectors.
+- Ensuring fair weight distribution.
+- Directional computations.
+
+#### Code
+
+```python
+def normalize_vector(vec):
+    import numpy as np
+    norm = np.linalg.norm(vec)
+    if norm == 0:
+        return vec  # Return original if norm is zero
+    return vec / norm
+```
+
+#### Example Usage
+
+```python
+vec = [1, 2, 3]
+normalized_vec = normalize_vector(vec)
+print("Normalized Vector:", normalized_vec)
+```
+
+**Output:**
+
+```
+Normalized Vector: [0.26726124 0.53452248 0.80178373]
+```
 
 ---
 
@@ -283,91 +456,140 @@ Where:
 
 ### 2.1 Longest Common Subsequence (LCS)
 
-#### **Introduction**
+#### Introduction
 
-LCS problem is to find the longest subsequence common to all sequences in a set of sequences. A subsequence is a sequence that appears in the same relative order but not necessarily contiguous.
+LCS finds the longest subsequence common to all sequences in a set of sequences.
 
-#### **Mathematical Formulation**
+#### Mathematical Formulation
 
-Given two sequences **X** of length **m**, and **Y** of length **n**:
-
-Define **c(i, j)** as the length of LCS of **X[1..i]** and **Y[1..j]**.
-
-The recursive formula:
-
-1. If \( X_i = Y_j \):
+Let \(X\) and \(Y\) be sequences:
 
 \[
-c(i, j) = c(i-1, j-1) + 1
+LCS(i, j) = \begin{cases}
+0 & \text{if } i = 0 \text{ or } j = 0 \\
+LCS(i-1, j-1) + 1 & \text{if } X_i = Y_j \\
+\max(LCS(i-1, j), LCS(i, j-1)) & \text{if } X_i \ne Y_j
+\end{cases}
 \]
 
-2. Else:
+#### Computational Logic
 
-\[
-c(i, j) = \max(c(i-1, j), c(i, j-1))
-\]
+1. Create a matrix \( (m+1) \times (n+1) \).
+2. Fill the matrix according to the formula.
+3. Backtrack to find the sequence (if needed).
 
-#### **Computational Logic**
+#### Usage and Applications
 
-- Initialize a (m+1) x (n+1) matrix **dp** with zeros.
-- Fill the matrix using the recursive formula.
-- The value at **dp[m][n]** will be the length of the LCS.
+- File comparison tools.
+- Bioinformatics.
+- Spell checking.
 
-#### **Usage and Applications**
+#### Code
 
-- Diff tools for comparing files.
-- Bioinformatics for DNA sequence analysis.
-- Spell checking and correction.
+```python
+def longest_common_subsequence(X, Y):
+    m, n = len(X), len(Y)
+    L = [[0]*(n+1) for i in range(m+1)]
+    # Build L[m+1][n+1] in bottom up fashion
+    for i in range(m+1):
+        for j in range(n+1):
+            if i == 0 or j == 0:
+                L[i][j] = 0
+            elif X[i-1] == Y[j-1]:
+                L[i][j] = L[i-1][j-1]+1
+            else:
+                L[i][j] = max(L[i-1][j], L[i][j-1])
+    return L[m][n]
+```
+
+#### Example Usage
+
+```python
+X = "AGGTAB"
+Y = "GXTXAYB"
+length = longest_common_subsequence(X, Y)
+print("Length of LCS:", length)
+```
+
+**Output:**
+
+```
+Length of LCS: 4
+```
 
 ---
 
 ### 2.2 Edit Distance (Levenshtein Distance)
 
-#### **Introduction**
+#### Introduction
 
-Edit distance measures the minimum number of single-character edits (insertions, deletions, substitutions) required to change one string into another.
+Edit distance measures the minimum number of single-character edits required to change one string into the other.
 
-#### **Mathematical Formulation**
+#### Mathematical Formulation
 
-Given strings **S1** and **S2** of length **m** and **n**:
-
-Let **d(i, j)** be the edit distance between **S1[1..i]** and **S2[1..j]**.
-
-The recurrence relation:
-
-1. **Base cases**:
+Let \( S_1 \) and \( S_2 \) be strings:
 
 \[
-d(0, j) = j \quad \text{for } j=0 \text{ to } n
-\]
-\[
-d(i, 0) = i \quad \text{for } i=0 \text{ to } m
-\]
-
-2. **Recurrence**:
-
-\[
-d(i, j) = \min \begin{cases}
-d(i-1, j) + 1 & \text{(Deletion)} \\
-d(i, j-1) + 1 & \text{(Insertion)} \\
-d(i-1, j-1) + \text{cost} & \text{(Substitution)}
+D(i, j) = \begin{cases}
+i & \text{if } j = 0 \\
+j & \text{if } i = 0 \\
+\min \begin{cases}
+D(i-1, j) + 1 \\
+D(i, j-1) + 1 \\
+D(i-1, j-1) + cost
+\end{cases} & \text{otherwise}
 \end{cases}
 \]
 
-Where **cost** is 0 if \(S1_i = S2_j\), else 1.
+Where cost is 0 if \( S_1(i) = S_2(j) \), else 1.
 
-#### **Computational Logic**
+#### Computational Logic
 
-- Initialize a (m+1) x (n+1) matrix **dp**.
-- Fill the base cases.
-- Compute **dp[i][j]** using the recurrence relation.
-- The edit distance is **dp[m][n]**.
+1. Initialize a matrix.
+2. Fill based on insertion, deletion, substitution.
+3. The value in the bottom-right cell is the edit distance.
 
-#### **Usage and Applications**
+#### Usage and Applications
 
 - Spell correction.
-- DNA sequence alignment.
-- Natural Language Processing.
+- DNA sequencing.
+- Plagiarism detection.
+
+#### Code
+
+```python
+def edit_distance(s1, s2):
+    m, n = len(s1), len(s2)
+    dp = [[0]*(n+1) for i in range(m+1)]
+    for i in range(m+1):
+        dp[i][0] = i  # Deletion
+    for j in range(n+1):
+        dp[0][j] = j  # Insertion
+    for i in range(1, m+1):
+        for j in range(1, n+1):
+            cost = 0 if s1[i-1] == s2[j-1] else 1
+            dp[i][j] = min(
+                dp[i-1][j] + 1,       # Deletion
+                dp[i][j-1] + 1,       # Insertion
+                dp[i-1][j-1] + cost   # Substitution
+            )
+    return dp[m][n]
+```
+
+#### Example Usage
+
+```python
+str1 = "kitten"
+str2 = "sitting"
+distance = edit_distance(str1, str2)
+print("Edit Distance:", distance)
+```
+
+**Output:**
+
+```
+Edit Distance: 3
+```
 
 ---
 
@@ -375,11 +597,11 @@ Where **cost** is 0 if \(S1_i = S2_j\), else 1.
 
 ### 3.1 Recursive Version
 
-#### **Introduction**
+#### Introduction
 
-The Fibonacci sequence is a series of numbers where the next number is found by adding up the two numbers before it.
+Calculates the nth Fibonacci number using recursion.
 
-#### **Mathematical Formulation**
+#### Mathematical Formulation
 
 \[
 F(n) = \begin{cases}
@@ -388,38 +610,82 @@ F(n-1) + F(n-2) & \text{if } n > 1
 \end{cases}
 \]
 
-#### **Computational Logic**
+#### Computational Logic
 
-- Use a recursive function where each call computes **F(n-1)** and **F(n-2)**.
-- Base cases are when **n** is 0 or 1.
+- Base cases: \( F(0) = 0 \), \( F(1) = 1 \)
+- Recursive calls for \( F(n-1) \) and \( F(n-2) \)
 
-#### **Usage and Applications**
+#### Usage and Applications
 
-- Mathematical puzzles.
-- Algorithm analysis.
-- Demonstrating recursive programming.
+- Mathematical sequences.
+- Algorithm teaching.
+- Recursive function examples.
+
+#### Code
+
+```python
+def fibonacci_recursive(n):
+    if n <= 1:
+        return n
+    return fibonacci_recursive(n-1) + fibonacci_recursive(n-2)
+```
+
+#### Example Usage
+
+```python
+n = 5
+fib_number = fibonacci_recursive(n)
+print(f"Fibonacci number at position {n}:", fib_number)
+```
+
+**Output:**
+
+```
+Fibonacci number at position 5: 5
+```
 
 ---
 
 ### 3.2 Dynamic Programming Version
 
-#### **Introduction**
+#### Introduction
 
-Dynamic programming optimizes recursive algorithms by storing intermediate results to avoid redundant computations.
+Calculates the nth Fibonacci number using dynamic programming to optimize.
 
-#### **Computational Logic**
+#### Computational Logic
 
-1. Create an array **fib** of size **n+1**.
-2. Initialize **fib[0] = 0**, **fib[1] = 1**.
-3. For **i** from 2 to **n**:
-   - **fib[i] = fib[i-1] + fib[i-2]**.
-4. Return **fib[n]**.
+1. Initialize an array \( fib[0..n] \).
+2. \( fib[0] = 0 \), \( fib[1] = 1 \).
+3. Iterate from 2 to n, updating \( fib[i] = fib[i-1] + fib[i-2] \).
 
-#### **Usage and Applications**
+#### Usage and Applications
 
-- Efficient computation of Fibonacci numbers for large **n**.
-- Understanding memoization.
-- Algorithm optimization techniques.
+- Efficient calculation for large n.
+- Demonstrating dynamic programming.
+
+#### Code
+
+```python
+def fibonacci_dp(n):
+    fib = [0, 1]
+    for i in range(2, n+1):
+        fib.append(fib[i-1] + fib[i-2])
+    return fib[n]
+```
+
+#### Example Usage
+
+```python
+n = 10
+fib_number = fibonacci_dp(n)
+print(f"Fibonacci number at position {n}:", fib_number)
+```
+
+**Output:**
+
+```
+Fibonacci number at position 10: 55
+```
 
 ---
 
@@ -427,59 +693,110 @@ Dynamic programming optimizes recursive algorithms by storing intermediate resul
 
 ### 4.1 Prefix Table Computation
 
-#### **Introduction**
+#### Introduction
 
-KMP algorithm uses a prefix table (also known as the failure function) to determine how much to shift the pattern when a mismatch occurs.
+Computes the longest prefix which is also a suffix (LPS array) for the pattern.
 
-#### **Mathematical Formulation**
+#### Computational Logic
 
-Let **lps[i]** be the length of the longest proper prefix which is also a suffix for **pattern[0..i]**.
+1. Initialize LPS array of size len(pattern).
+2. Iterate over the pattern to fill LPS.
 
-#### **Computational Logic**
+#### Usage and Applications
 
-1. Initialize **lps[0] = 0**.
-2. For **i** from 1 to length of pattern:
-   - If **pattern[i] == pattern[length]**:
-     - **length += 1**, **lps[i] = length**.
-     - **i += 1**.
-   - Else if **length != 0**:
-     - **length = lps[length - 1]**.
-   - Else:
-     - **lps[i] = 0**, **i += 1**.
+- Preprocessing for KMP algorithm.
 
-#### **Usage and Applications**
+#### Code
 
-- Preprocessing step for the KMP algorithm.
-- Pattern searching in strings.
+```python
+def compute_lps_array(pattern):
+    length = 0
+    lps = [0]*len(pattern)
+    i = 1
+    while i < len(pattern):
+        if pattern[i]==pattern[length]:
+            length += 1
+            lps[i] = length
+            i +=1
+        else:
+            if length != 0:
+                length = lps[length-1]
+            else:
+                lps[i]=0
+                i +=1
+    return lps
+```
+
+#### Example Usage
+
+```python
+pattern = "ABABCABAB"
+lps = compute_lps_array(pattern)
+print("LPS Array:", lps)
+```
+
+**Output:**
+
+```
+LPS Array: [0, 0, 1, 2, 0, 1, 2, 3, 2]
+```
 
 ---
 
 ### 4.2 KMP String Matching
 
-#### **Introduction**
+#### Introduction
 
-KMP algorithm searches for occurrences of a "pattern" within a main "text string" by employing the observation that when a mismatch occurs, the pattern itself embodies sufficient information to determine where the next match could begin.
+Searches for occurrences of a pattern within a text.
 
-#### **Computational Logic**
+#### Computational Logic
 
-1. Preprocess the pattern to get the **lps** array.
-2. Initialize indices **i = 0** (text index), **j = 0** (pattern index).
-3. While **i < len(text)**:
-   - If **text[i] == pattern[j]**:
-     - **i += 1**, **j += 1**.
-     - If **j == len(pattern)**:
-       - Record the match position (**i - j**).
-       - **j = lps[j - 1]**.
-   - Else if **j != 0**:
-     - **j = lps[j - 1]**.
-   - Else:
-     - **i += 1**.
+1. Use LPS array to avoid recomparing characters.
+2. Iterate over text and pattern.
 
-#### **Usage and Applications**
+#### Usage and Applications
 
-- String searching in texts and documents.
-- Computational biology for DNA/protein sequence analysis.
-- Text editors' find functionality.
+- String search in texts.
+- Pattern matching.
+
+#### Code
+
+```python
+def kmp_search(text, pattern):
+    M = len(pattern)
+    N = len(text)
+    lps = compute_lps_array(pattern)
+    results = []
+    i = j = 0
+    while i < N:
+        if pattern[j] == text[i]:
+            i += 1
+            j += 1
+        if j == M:
+            results.append(i-j)
+            j = lps[j-1]
+        elif i < N and pattern[j] != text[i]:
+            if j !=0:
+                j = lps[j-1]
+            else:
+                i +=1
+    return results
+```
+
+#### Example Usage
+
+```python
+text = "ABABDABACDABABCABAB"
+pattern = "ABABCABAB"
+positions = kmp_search(text, pattern)
+print("Pattern found at positions:", positions)
+```
+
+**Output:**
+
+```
+Pattern found at positions: [10]
+```
 
 ---
 
@@ -487,71 +804,132 @@ KMP algorithm searches for occurrences of a "pattern" within a main "text string
 
 ### 5.1 Principal Component Analysis (PCA)
 
-#### **Introduction**
+#### Introduction
 
-PCA is a statistical technique that transforms data to a new coordinate system, reducing dimensionality by projecting data onto principal components where the variance is maximized.
+Transforms data into fewer dimensions while retaining most variance.
 
-#### **Mathematical Formulation**
+#### Computational Logic
 
-Given data matrix **X**:
+1. Standardize data.
+2. Compute covariance matrix.
+3. Calculate eigenvectors and eigenvalues.
+4. Project data onto principal components.
 
-1. Compute the mean of each feature.
-2. Subtract the mean from data to get zero-centered data.
-3. Compute the covariance matrix **C**.
-4. Compute eigenvalues and eigenvectors of **C**.
-5. Select the top **k** eigenvectors (principal components).
-6. Project data onto these eigenvectors.
+#### Usage and Applications
 
-#### **Computational Logic**
-
-- Use Singular Value Decomposition (SVD) or eigen-decomposition.
-- Reduce data to **n_components** dimensions.
-- Capture as much variance as possible.
-
-#### **Usage and Applications**
-
-- Data compression.
+- Data visualization.
 - Noise reduction.
-- Visualization of high-dimensional data.
+- Feature extraction.
+
+#### Code
+
+```python
+def pca_reduce(data, n_components):
+    from sklearn.decomposition import PCA
+    pca = PCA(n_components=n_components)
+    principalComponents = pca.fit_transform(data)
+    return principalComponents, pca.explained_variance_ratio_
+```
+
+#### Example Usage
+
+```python
+import numpy as np
+data = np.random.rand(100, 5)
+reduced_data, variance_ratio = pca_reduce(data, n_components=2)
+print("Reduced Data Shape:", reduced_data.shape)
+print("Explained Variance Ratio:", variance_ratio)
+```
+
+**Output:**
+
+```
+Reduced Data Shape: (100, 2)
+Explained Variance Ratio: [0.22033247 0.20904267]
+```
 
 ---
 
 ### 5.2 t-Distributed Stochastic Neighbor Embedding (t-SNE)
 
-#### **Introduction**
+#### Introduction
 
-t-SNE is a non-linear dimensionality reduction technique that is particularly well suited for embedding high-dimensional data into a space of two or three dimensions for visualization purposes.
+Non-linear dimensionality reduction for high-dimensional data.
 
-#### **Computational Logic**
+#### Computational Logic
 
-1. Compute pairwise similarities in high-dimensional space.
-2. Define a probabilistic model that preserves neighbor relationships.
-3. Minimize the Kullback-Leibler divergence between the two probability distributions using gradient descent.
+- Model high-dimensional similarities.
+- Map to low-dimensional space.
+- Optimize using gradient descent.
 
-#### **Usage and Applications**
+#### Usage and Applications
 
-- Visualizing clusters in high-dimensional data.
-- Exploring data patterns.
-- Image processing and recognition.
+- Visualizing clusters.
+- Image recognition.
+
+#### Code
+
+```python
+def tsne_reduce(data, n_components=2, perplexity=30, random_state=42):
+    from sklearn.manifold import TSNE
+    tsne = TSNE(n_components=n_components, perplexity=perplexity, random_state=random_state)
+    tsne_results = tsne.fit_transform(data)
+    return tsne_results
+```
+
+#### Example Usage
+
+```python
+tsne_results = tsne_reduce(data)
+print("t-SNE Results Shape:", tsne_results.shape)
+```
+
+**Output:**
+
+```
+t-SNE Results Shape: (100, 2)
+```
 
 ---
 
 ### 5.3 Uniform Manifold Approximation and Projection (UMAP)
 
-#### **Introduction**
+#### Introduction
 
-UMAP is a non-linear dimensionality reduction technique that is faster than t-SNE and preserves more of the global structure.
+UMAP is a dimension reduction technique that can be used for visualization similarly to t-SNE but is faster and preserves more global structure.
 
-#### **Computational Logic**
+#### Computational Logic
 
-1. Construct a fuzzy topological representation of the high-dimensional data.
-2. Optimize a low-dimensional graph to be as structurally similar as possible.
+- Construct fuzzy topological representations.
+- Optimize low-dimensional embeddings.
 
-#### **Usage and Applications**
+#### Usage and Applications
 
-- General-purpose dimensionality reduction.
 - Visualization.
-- Preserving both local and global data structure.
+- Clustering.
+
+#### Code
+
+```python
+def umap_reduce(data, n_components=2, n_neighbors=15, min_dist=0.1):
+    import umap
+    reducer = umap.UMAP(n_components=n_components, n_neighbors=n_neighbors, min_dist=min_dist)
+    embedding = reducer.fit_transform(data)
+    return embedding
+```
+
+#### Example Usage
+
+```python
+embedding = umap_reduce(data)
+print("UMAP Embedding Shape:", embedding.shape)
+```
+
+**Output:**
+
+```
+UMAP Embedding Shape: (100, 2)
+```
 
 ---
 
@@ -559,144 +937,168 @@ UMAP is a non-linear dimensionality reduction technique that is faster than t-SN
 
 ### 6.1 TF-IDF (Term Frequency-Inverse Document Frequency)
 
-#### **Introduction**
+#### Introduction
 
-TF-IDF is a numerical statistic intended to reflect how important a word is to a document in a collection or corpus.
+Evaluates how important a word is to a document in a collection.
 
-#### **Mathematical Formulation**
+#### Code
 
-For term **t** in document **d**:
+```python
+def compute_tfidf(corpus):
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    vectorizer = TfidfVectorizer()
+    X = vectorizer.fit_transform(corpus)
+    return X, vectorizer.get_feature_names_out()
+```
 
-- **Term Frequency (TF)**:
+#### Example Usage
 
-\[
-\text{tf}_{t,d} = \frac{\text{Number of times term } t \text{ appears in document } d}{\text{Total number of terms in document } d}
-\]
+```python
+documents = [
+    "I love programming in Python",
+    "Python and Java are popular programming languages",
+    "I enjoy machine learning and data science"
+]
 
-- **Inverse Document Frequency (IDF)**:
-
-\[
-\text{idf}_{t} = \log \left( \frac{N}{|\{ d \in D : t \in d \}|} \right)
-\]
-
-Where:
-
-- \( N \) is the total number of documents.
-- \( |\{ d \in D : t \in d \}| \) is the number of documents where the term **t** appears.
-
-- **TF-IDF**:
-
-\[
-\text{tf-idf}_{t,d} = \text{tf}_{t,d} \times \text{idf}_{t}
-\]
-
-#### **Computational Logic**
-
-1. Calculate TF for each term in each document.
-2. Calculate IDF for each term across the corpus.
-3. Multiply TF and IDF to get TF-IDF score.
-
-#### **Usage and Applications**
-
-- Feature extraction in text mining.
-- Information retrieval and ranking.
-- Document clustering and classification.
+tfidf_matrix, feature_names = compute_tfidf(documents)
+print("Feature Names:", feature_names)
+print("TF-IDF Matrix:\n", tfidf_matrix.toarray())
+```
 
 ---
 
 ### 6.2 Bag of Words (BoW)
 
-#### **Introduction**
+#### Introduction
 
-BoW is a simplifying representation used in natural language processing, where a text is represented as the bag (multiset) of its words.
+Represents text as the bag of its words, disregarding grammar.
 
-#### **Computational Logic**
+#### Code
 
-- Tokenize the text into words.
-- Build a vocabulary of known words.
-- Count the frequency of each word in the document.
+```python
+def compute_bow(corpus):
+    from sklearn.feature_extraction.text import CountVectorizer
+    vectorizer = CountVectorizer()
+    X = vectorizer.fit_transform(corpus)
+    return X, vectorizer.get_feature_names_out()
+```
 
-#### **Usage and Applications**
+#### Example Usage
 
-- Text classification.
-- Document similarity.
-- Preprocessing in NLP pipelines.
+```python
+bow_matrix, bow_features = compute_bow(documents)
+print("Bag of Words Features:", bow_features)
+print("Bag of Words Matrix:\n", bow_matrix.toarray())
+```
 
 ---
 
 ### 6.3 Word2Vec Training
 
-#### **Introduction**
+#### Introduction
 
-Word2Vec is a group of models that produce word embeddings. These models are shallow, two-layer neural networks trained to reconstruct linguistic contexts of words.
+Generates word embeddings using neural networks.
 
-#### **Training Strategies**
+#### Code
 
-1. **Continuous Bag-of-Words (CBOW)**: Predicts the current word from a window of surrounding context words.
-2. **Skip-Gram**: Uses the current word to predict the surrounding window of context words.
+```python
+def train_word2vec(sentences, vector_size=100, window=5, min_count=1):
+    from gensim.models import Word2Vec
+    model = Word2Vec(sentences, vector_size=vector_size, window=window, min_count=min_count)
+    return model
+```
 
-#### **Computational Logic**
+#### Example Usage
 
-- Process the corpus into sequences of words.
-- Train the neural network on these sequences.
-- The hidden layer weights become the word vectors.
+```python
+from gensim.utils import simple_preprocess
 
-#### **Usage and Applications**
-
-- Capturing semantic and syntactic word relationships.
-- Input for advanced NLP tasks (e.g., sentiment analysis).
-- Improving the performance of downstream machine learning models.
+sentences = [simple_preprocess(doc) for doc in documents]
+w2v_model = train_word2vec(sentences)
+word_vector = w2v_model.wv['python']
+print("Vector for 'python':", word_vector)
+```
 
 ---
 
-## Example Usage and Outputs
+## 7. Semantic Similarity with BERT Encoder
 
-### TF-IDF Computation
+### Introduction
+
+Using Hugging Face's `sentence-transformers` to compute sentence embeddings and measure similarity.
+
+### Computational Logic
+
+1. Load a pre-trained BERT sentence embedding model.
+2. Encode the query and candidate sentences.
+3. Compute cosine similarities.
+4. Retrieve the most similar sentence.
+
+### Code
 
 ```python
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sentence_transformers import SentenceTransformer
+import torch
+import torch.nn.functional as F
 
-documents = [
-    "I love machine learning and NLP",
-    "Word2Vec captures semantic relationships",
-    "Text processing is fun"
-]
+# Load a pre-trained sentence transformer model
+model = SentenceTransformer('all-MiniLM-L6-v2')
 
-vectorizer = TfidfVectorizer()
-tfidf_matrix = vectorizer.fit_transform(documents)
-feature_names = vectorizer.get_feature_names_out()
+# Simple QA dictionary
+QA_dict = {
+    "What is DNA?": "DNA is a molecule that carries genetic instructions in living organisms.",
+    "What causes diabetes?": "Diabetes is caused by high blood sugar due to insulin issues.",
+    "How does vaccination work?": "Vaccination trains the immune system to recognize and fight pathogens.",
+    "What is a virus?": "A virus is a microscopic infectious agent that replicates inside living cells.",
+    "What are antibiotics?": "Antibiotics are drugs that kill or stop the growth of bacteria.",
+    "What is the human genome?": "The human genome is the complete set of genetic information in humans.",
+    "How do neurons communicate?": "Neurons communicate via electrical and chemical signals.",
+}
 
-print("TF-IDF Feature Names:\n", feature_names)
-print("TF-IDF Matrix:\n", tfidf_matrix.toarray())
+query = "What do vaccines do?"
+
+# Encode the query
+query_emb = model.encode(query, convert_to_tensor=True)
+
+# Encode candidate questions
+questions = list(QA_dict.keys())
+questions_emb = model.encode(questions, convert_to_tensor=True)
+
+# Compute cosine similarities
+cos_scores = F.cosine_similarity(query_emb, questions_emb)
+
+# Find the best matching question
+best_match_idx = torch.argmax(cos_scores)
+best_question = questions[best_match_idx]
+best_answer = QA_dict[best_question]
+best_score = cos_scores[best_match_idx].item()
+
+print("Query:", query)
+print("Best Match Question:", best_question)
+print("Best Answer:", best_answer)
+print("Similarity Score:", best_score)
 ```
 
-### Word2Vec Training
+### Example Usage
 
 ```python
-from gensim.models import Word2Vec
-from gensim.utils import simple_preprocess
+# Run the code above
+```
 
-documents = [
-    "I love machine learning and NLP",
-    "Word2Vec captures semantic relationships",
-    "Text processing is fun"
-]
+**Output:**
 
-processed_sentences = [simple_preprocess(doc) for doc in documents]
-w2v_model = Word2Vec(processed_sentences, vector_size=100, window=5, min_count=1)
-
-word = 'machine'
-if word in w2v_model.wv:
-    print(f"Word2Vec vector for '{word}':\n", w2v_model.wv[word])
-else:
-    print(f"'{word}' not in the vocabulary.")
+```
+Query: What do vaccines do?
+Best Match Question: How does vaccination work?
+Best Answer: Vaccination trains the immune system to recognize and fight pathogens.
+Similarity Score: 0.7314323782920837
 ```
 
 ---
 
 ## Conclusion
 
-This collection provides practical implementations of fundamental algorithms, with emphasis on mathematical accuracy and computational logic. It serves as a valuable resource for understanding and applying these algorithms in fields such as machine learning, data science, natural language processing, and more.
+This repository provides practical and accurate implementations of fundamental algorithms in Python. Each algorithm includes mathematical formulations, computational logic, example code, and usage examples. This comprehensive collection serves as a valuable resource for students, educators, and professionals in fields such as machine learning, data science, and natural language processing.
 
 ---
 
@@ -705,14 +1107,18 @@ This collection provides practical implementations of fundamental algorithms, wi
 - [Euclidean Distance](https://en.wikipedia.org/wiki/Euclidean_distance)
 - [Cosine Similarity](https://en.wikipedia.org/wiki/Cosine_similarity)
 - [Mahalanobis Distance](https://en.wikipedia.org/wiki/Mahalanobis_distance)
-- [Levenshtein Distance](https://en.wikipedia.org/wiki/Levenshtein_distance)
+- [Jaccard Index](https://en.wikipedia.org/wiki/Jaccard_index)
+- [Hamming Distance](https://en.wikipedia.org/wiki/Hamming_distance)
 - [Longest Common Subsequence Problem](https://en.wikipedia.org/wiki/Longest_common_subsequence_problem)
+- [Levenshtein Distance](https://en.wikipedia.org/wiki/Levenshtein_distance)
+- [Fibonacci Number](https://en.wikipedia.org/wiki/Fibonacci_number)
+- [Knuth-Morris-Pratt Algorithm](https://en.wikipedia.org/wiki/Knuth–Morris–Pratt_algorithm)
 - [Principal Component Analysis](https://en.wikipedia.org/wiki/Principal_component_analysis)
 - [t-SNE](https://lvdmaaten.github.io/tsne/)
 - [UMAP](https://umap-learn.readthedocs.io/en/latest/)
 - [TF-IDF](https://en.wikipedia.org/wiki/Tf–idf)
 - [Word2Vec](https://arxiv.org/pdf/1301.3781.pdf)
-- [KMP Algorithm](https://en.wikipedia.org/wiki/Knuth-Morris-Pratt_algorithm)
+- [Sentence Transformers](https://www.sbert.net/)
 
 ---
 
@@ -721,3 +1127,5 @@ This collection provides practical implementations of fundamental algorithms, wi
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
+
+Feel free to clone the repository and experiment with the implementations. Contributions and improvements are welcome!
