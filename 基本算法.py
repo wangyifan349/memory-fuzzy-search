@@ -4,117 +4,191 @@ from scipy.spatial.distance import mahalanobis
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 import umap.umap_ as umap
+from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
+from gensim.models import Word2Vec
+from gensim.utils import simple_preprocess
 
-# 1. 余弦相似度（Cosine Similarity）
+# -----------------------------------------------
+# Similarity and Distance Measures
+# -----------------------------------------------
+
 def cosine_similarity(vec1, vec2):
-    vec1 = np.array(vec1)
-    vec2 = np.array(vec2)
-    dot_product = np.dot(vec1, vec2)                   # 向量点积
-    norm1 = np.linalg.norm(vec1)                       # vec1的L2范数
-    norm2 = np.linalg.norm(vec2)                       # vec2的L2范数
+    """
+    Calculate the cosine similarity between two vectors.
+    """
+    vec1 = np.array(vec1)  # Convert list to NumPy array
+    vec2 = np.array(vec2)  # Convert list to NumPy array
+    dot_product = np.dot(vec1, vec2)  # Compute dot product
+    norm1 = np.linalg.norm(vec1)  # Compute the L2 norm of vec1
+    norm2 = np.linalg.norm(vec2)  # Compute the L2 norm of vec2
     if norm1 == 0 or norm2 == 0:
-        return 0
-    return dot_product / (norm1 * norm2)
+        return 0  # Return 0 if either vector is zero
+    return dot_product / (norm1 * norm2)  # Return cosine similarity
 
-# 2. 点积（Dot Product）
 def dot_product(vec1, vec2):
-    return np.dot(vec1, vec2)                          # 计算两个向量的点积
+    """
+    Calculate the dot product between two vectors.
+    """
+    vec1 = np.array(vec1)  # Convert list to NumPy array
+    vec2 = np.array(vec2)  # Convert list to NumPy array
+    product = np.dot(vec1, vec2)  # Compute dot product
+    return product  # Return dot product
 
-# 3. 欧式距离（Euclidean Distance）
 def euclidean_distance(vec1, vec2):
-    vec1 = np.array(vec1)
-    vec2 = np.array(vec2)
-    diff = vec1 - vec2
-    return np.linalg.norm(diff)                        # 计算两个向量的欧式距离
+    """
+    Calculate the Euclidean distance between two vectors.
+    """
+    vec1 = np.array(vec1)  # Convert list to NumPy array
+    vec2 = np.array(vec2)  # Convert list to NumPy array
+    diff = vec1 - vec2  # Compute difference between vectors
+    distance = np.linalg.norm(diff)  # Compute L2 norm of difference
+    return distance  # Return Euclidean distance
 
-# 4. 曼哈顿距离（Manhattan Distance）
 def manhattan_distance(vec1, vec2):
-    vec1 = np.array(vec1)
-    vec2 = np.array(vec2)
-    diff = vec1 - vec2
-    return np.sum(np.abs(diff))                        # 计算两个向量的曼哈顿距离
+    """
+    Calculate the Manhattan distance between two vectors.
+    """
+    vec1 = np.array(vec1)  # Convert list to NumPy array
+    vec2 = np.array(vec2)  # Convert list to NumPy array
+    diff = vec1 - vec2  # Compute difference between vectors
+    distance = np.sum(np.abs(diff))  # Compute sum of absolute differences
+    return distance  # Return Manhattan distance
 
-# 5. 马氏距离（Mahalanobis Distance）
 def mahalanobis_distance(vec1, vec2, covariance_matrix):
-    vec1 = np.array(vec1)
-    vec2 = np.array(vec2)
-    cov_inv = np.linalg.inv(covariance_matrix)
-    return mahalanobis(vec1, vec2, cov_inv)            # 计算马氏距离
+    """
+    Calculate the Mahalanobis distance between two vectors given a covariance matrix.
+    """
+    vec1 = np.array(vec1)  # Convert list to NumPy array
+    vec2 = np.array(vec2)  # Convert list to NumPy array
+    cov_inv = np.linalg.inv(covariance_matrix)  # Invert the covariance matrix
+    distance = mahalanobis(vec1, vec2, cov_inv)  # Compute Mahalanobis distance
+    return distance  # Return Mahalanobis distance
 
-# 6. 杰卡德相似度（Jaccard Similarity）
 def jaccard_similarity(set1, set2):
-    set1 = set(set1)
-    set2 = set(set2)
-    intersection = set1.intersection(set2)
-    union = set1.union(set2)
+    """
+    Calculate the Jaccard similarity between two sets.
+    """
+    set1 = set(set1)  # Convert list to set
+    set2 = set(set2)  # Convert list to set
+    intersection = set1.intersection(set2)  # Find intersection
+    union = set1.union(set2)  # Find union
     if not union:
-        return 1.0
-    return len(intersection) / len(union)              # 计算杰卡德相似度
+        return 1.0  # If both sets are empty, return 1.0
+    similarity = float(len(intersection)) / len(union)  # Compute Jaccard similarity
+    return similarity  # Return Jaccard similarity
 
-# 7. 汉明距离（Hamming Distance）
 def hamming_distance(str1, str2):
+    """
+    Calculate the Hamming distance between two strings of equal length.
+    """
     if len(str1) != len(str2):
-        raise ValueError("字符串长度必须相等")
-    return sum(c1 != c2 for c1, c2 in zip(str1, str2)) # 计算汉明距离
+        raise ValueError("Strings must be of equal length")  # Raise error if lengths differ
+    distance = 0  # Initialize distance
+    for c1, c2 in zip(str1, str2):
+        if c1 != c2:
+            distance += 1  # Increment distance for each differing character
+    return distance  # Return Hamming distance
 
-# 8. 向量归一化（Normalization）
 def normalize_vector(vec):
-    vec = np.array(vec)
-    norm = np.linalg.norm(vec)
+    """
+    Normalize a vector to have a unit norm.
+    """
+    vec = np.array(vec)  # Convert list to NumPy array
+    norm = np.linalg.norm(vec)  # Compute L2 norm of vector
     if norm == 0:
-        return vec
-    return vec / norm                                  # 归一化向量
+        return vec  # If norm is zero, return the original vector
+    normalized_vec = vec / norm  # Divide vector by its norm
+    return normalized_vec  # Return normalized vector
 
-# 9. 最长公共子序列（Longest Common Subsequence, LCS）
+# -----------------------------------------------
+# String Algorithms
+# -----------------------------------------------
+
 def longest_common_subsequence(s1, s2):
-    m, n = len(s1), len(s2)
-    dp = [[0]*(n+1) for _ in range(m+1)]               # 初始化DP表
-    for i in range(1, m+1):
-        for j in range(1, n+1):
-            if s1[i-1] == s2[j-1]:
-                dp[i][j] = dp[i-1][j-1] + 1
+    """
+    Find the length of the longest common subsequence between two strings.
+    """
+    m = len(s1)  # Length of first string
+    n = len(s2)  # Length of second string
+    dp = []  # Initialize DP table
+    for i in range(m + 1):
+        dp_row = []
+        for j in range(n + 1):
+            dp_row.append(0)
+        dp.append(dp_row)
+    for i in range(1, m + 1):
+        for j in range(1, n + 1):
+            if s1[i - 1] == s2[j - 1]:
+                dp[i][j] = dp[i - 1][j - 1] + 1  # Characters match
             else:
-                dp[i][j] = max(dp[i-1][j], dp[i][j-1])
-    return dp[m][n]                                    # 返回LCS长度
+                dp[i][j] = max(dp[i - 1][j], dp[i][j - 1])  # Take maximum of left and top cell
+    return dp[m][n]  # Return length of LCS
 
-# 10. 编辑距离（Levenshtein Distance）
 def edit_distance(s1, s2):
-    m, n = len(s1), len(s2)
-    dp = [[0]*(n+1) for _ in range(m+1)]               # 初始化DP表
-    for i in range(m+1):
-        dp[i][0] = i                                   
-    for j in range(n+1):
-        dp[0][j] = j
-    for i in range(1, m+1):
-        for j in range(1, n+1):
-            cost = 0 if s1[i-1] == s2[j-1] else 1
+    """
+    Calculate the Levenshtein edit distance between two strings.
+    """
+    m = len(s1)  # Length of first string
+    n = len(s2)  # Length of second string
+    dp = []  # Initialize DP table
+    for i in range(m + 1):
+        dp_row = []
+        for j in range(n + 1):
+            dp_row.append(0)
+        dp.append(dp_row)
+    for i in range(m + 1):
+        dp[i][0] = i  # Cost of deletions
+    for j in range(n + 1):
+        dp[0][j] = j  # Cost of insertions
+    for i in range(1, m + 1):
+        for j in range(1, n + 1):
+            cost = 0 if s1[i - 1] == s2[j - 1] else 1  # Cost is 0 if characters match
             dp[i][j] = min(
-                dp[i-1][j] + 1,                        # 删除
-                dp[i][j-1] + 1,                        # 插入
-                dp[i-1][j-1] + cost                    # 替换或匹配
+                dp[i - 1][j] + 1,        # Deletion
+                dp[i][j - 1] + 1,        # Insertion
+                dp[i - 1][j - 1] + cost  # Substitution
             )
-    return dp[m][n]                                    # 返回编辑距离
+    return dp[m][n]  # Return edit distance
 
-# 11. 斐波那契数列 - 递归版
+# -----------------------------------------------
+# Sequence Algorithms
+# -----------------------------------------------
+
 def fibonacci_recursive(n):
+    """
+    Calculate the nth Fibonacci number using recursion.
+    """
     if n <= 1:
-        return n
-    return fibonacci_recursive(n-1) + fibonacci_recursive(n-2)  # 递归计算
+        return n  # Base case
+    result = fibonacci_recursive(n - 1) + fibonacci_recursive(n - 2)  # Recursive calls
+    return result  # Return nth Fibonacci number
 
-# 12. 斐波那契数列 - 动态规划版
 def fibonacci_dp(n):
+    """
+    Calculate the nth Fibonacci number using dynamic programming.
+    """
     if n <= 1:
-        return n
-    fib = [0]*(n+1)
-    fib[1] = 1
-    for i in range(2, n+1):
-        fib[i] = fib[i-1] + fib[i-2]
-    return fib[n]                                       # 返回斐波那契第n项
+        return n  # Base case
+    fib = []
+    for i in range(n + 1):
+        fib.append(0)
+    fib[1] = 1  # Seed value
+    for i in range(2, n + 1):
+        fib[i] = fib[i - 1] + fib[i - 2]  # Sum of previous two numbers
+    return fib[n]  # Return nth Fibonacci number
 
-# 13. KMP算法前缀表计算
+# -----------------------------------------------
+# Pattern Matching Algorithms
+# -----------------------------------------------
+
 def kmp_compute_prefix(pattern):
-    length = 0
-    lps = [0]*len(pattern)
+    """
+    Compute the Longest Proper Prefix array for KMP algorithm.
+    """
+    length = 0  # Length of the previous longest prefix suffix
+    lps = []  # Initialize LPS array
+    for i in range(len(pattern)):
+        lps.append(0)
     i = 1
     while i < len(pattern):
         if pattern[i] == pattern[length]:
@@ -123,151 +197,215 @@ def kmp_compute_prefix(pattern):
             i += 1
         else:
             if length != 0:
-                length = lps[length-1]
+                length = lps[length - 1]  # Fallback in the LPS array
             else:
                 lps[i] = 0
                 i += 1
-    return lps                                           # 返回部分匹配表
+    return lps  # Return LPS array
 
-# 14. KMP字符串匹配
 def kmp_search(text, pattern):
+    """
+    Perform KMP search of a pattern within a text.
+    """
     if not pattern:
-        return []
-    lps = kmp_compute_prefix(pattern)
-    result = []
-    i = j = 0
+        return []  # Return empty list if pattern is empty
+    lps = kmp_compute_prefix(pattern)  # Compute LPS array
+    result = []  # Initialize result list
+    i = 0  # Index for text
+    j = 0  # Index for pattern
     while i < len(text):
         if text[i] == pattern[j]:
             i += 1
             j += 1
-            if j == len(pattern):
-                result.append(i - j)
-                j = lps[j-1]
-        else:
+        if j == len(pattern):
+            result.append(i - j)  # Pattern found
+            j = lps[j - 1]  # Fallback in the pattern
+        elif i < len(text) and text[i] != pattern[j]:
             if j != 0:
-                j = lps[j-1]
+                j = lps[j - 1]  # Fallback in the pattern
             else:
-                i += 1
-    return result                                        # 返回匹配位置列表
+                i += 1  # Move to next character in text
+    return result  # Return list of positions where pattern is found
 
-# 15. 主成分分析（PCA）
+# -----------------------------------------------
+# Dimensionality Reduction Techniques
+# -----------------------------------------------
+
 def pca_reduce(data, n_components):
-    pca_model = PCA(n_components=n_components)
-    reduced = pca_model.fit_transform(data)
-    return reduced                                       # 返回降维后数据
+    """
+    Reduce dimensionality of data using PCA.
+    """
+    pca_model = PCA(n_components=n_components)  # Initialize PCA model
+    reduced_data = pca_model.fit_transform(data)  # Fit and transform data
+    return reduced_data  # Return reduced data
 
-# 16. t-SNE降维
 def tsne_reduce(data, n_components=2, perplexity=30, random_state=42):
-    tsne_model = TSNE(n_components=n_components, perplexity=perplexity, random_state=random_state)
-    reduced = tsne_model.fit_transform(data)
-    return reduced                                       # 返回降维后数据
+    """
+    Reduce dimensionality of data using t-SNE.
+    """
+    tsne_model = TSNE(n_components=n_components, perplexity=perplexity, random_state=random_state)  # Initialize t-SNE model
+    reduced_data = tsne_model.fit_transform(data)  # Fit and transform data
+    return reduced_data  # Return reduced data
 
-# 17. UMAP降维
 def umap_reduce(data, n_components=2, n_neighbors=15, min_dist=0.1, random_state=42):
-    reducer = umap.UMAP(n_components=n_components, n_neighbors=n_neighbors, min_dist=min_dist, random_state=random_state)
-    reduced = reducer.fit_transform(data)
-    return reduced                                       # 返回降维后数据
+    """
+    Reduce dimensionality of data using UMAP.
+    """
+    reducer = umap.UMAP(
+        n_components=n_components,
+        n_neighbors=n_neighbors,
+        min_dist=min_dist,
+        random_state=random_state
+    )  # Initialize UMAP reducer
+    reduced_data = reducer.fit_transform(data)  # Fit and transform data
+    return reduced_data  # Return reduced data
 
-# 测试示例
-if __name__ == "__main__":
+# -----------------------------------------------
+# Text Vectorization and Word Embeddings
+# -----------------------------------------------
+
+def compute_tfidf(docs):
+    """
+    Compute TF-IDF matrix for a list of documents.
+    """
+    vectorizer = TfidfVectorizer()  # Initialize TF-IDF vectorizer
+    tfidf_matrix = vectorizer.fit_transform(docs)  # Fit and transform documents
+    feature_names = vectorizer.get_feature_names_out()  # Get feature names
+    return tfidf_matrix, feature_names  # Return TF-IDF matrix and feature names
+
+def compute_bag_of_words(docs):
+    """
+    Compute Bag of Words matrix for a list of documents.
+    """
+    vectorizer = CountVectorizer()  # Initialize CountVectorizer
+    count_matrix = vectorizer.fit_transform(docs)  # Fit and transform documents
+    feature_names = vectorizer.get_feature_names_out()  # Get feature names
+    return count_matrix, feature_names  # Return BoW matrix and feature names
+
+def train_word2vec(sentences, vector_size=100, window=5, min_count=1):
+    """
+    Train a Word2Vec model on a list of tokenized sentences.
+    """
+    model = Word2Vec(
+        sentences,
+        vector_size=vector_size,
+        window=window,
+        min_count=min_count,
+        sg=0  # Use CBOW architecture
+    )
+    return model  # Return trained Word2Vec model
+
+# -----------------------------------------------
+# Main Function
+# -----------------------------------------------
+
+def main():
+    """
+    Main function to demonstrate all algorithms.
+    """
+    # Vectors and sets for similarity and distance measures
     vec1 = [1, 2, 3]
     vec2 = [4, 5, 6]
     set1 = [1, 2, 3]
     set2 = [2, 3, 4]
-    s1 = "kitten"
-    s2 = "sitting"
     str1 = "karolin"
     str2 = "kathrin"
+
+    # Strings for string algorithms
+    s1 = "kitten"
+    s2 = "sitting"
     text = "ababcabcabababd"
     pattern = "ababd"
-    data_samples = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9], [2, 3, 4]])
 
-    print("余弦相似度:", cosine_similarity(vec1, vec2))
-    print("点积:", dot_product(vec1, vec2))
-    print("欧式距离:", euclidean_distance(vec1, vec2))
-    print("曼哈顿距离:", manhattan_distance(vec1, vec2))
-    print("杰卡德相似度:", jaccard_similarity(set1, set2))
-    print("汉明距离:", hamming_distance(str1, str2))
+    # Data for dimensionality reduction
+    data_samples = np.array([
+        [1, 2, 3],
+        [4, 5, 6],
+        [7, 8, 9],
+        [2, 3, 4]
+    ])
+
+    # Documents for text vectorization and embeddings
+    documents = [
+        "I love machine learning and NLP",
+        "Word2Vec captures semantic relationships",
+        "Text processing is fun"
+    ]
+
+    # Similarity and Distance Measures
+    print("Cosine Similarity:", cosine_similarity(vec1, vec2))
+    print("Dot Product:", dot_product(vec1, vec2))
+    print("Euclidean Distance:", euclidean_distance(vec1, vec2))
+    print("Manhattan Distance:", manhattan_distance(vec1, vec2))
+    print("Jaccard Similarity:", jaccard_similarity(set1, set2))
+    print("Hamming Distance:", hamming_distance(str1, str2))
 
     data_for_cov = np.array([vec1, vec2])
     cov_matrix = np.cov(data_for_cov, rowvar=False)
-    print("马氏距离:", mahalanobis_distance(vec1, vec2, cov_matrix))
-    print("归一化向量:", normalize_vector(vec1))
+    print("Mahalanobis Distance:", mahalanobis_distance(vec1, vec2, cov_matrix))
+    print("Normalized Vector:", normalize_vector(vec1))
 
-    print("最长公共子序列长度:", longest_common_subsequence("abcde", "ace"))
-    print("编辑距离:", edit_distance(s1, s2))
-    print("斐波那契数列第10项(递归):", fibonacci_recursive(10))
-    print("斐波那契数列第10项(DP):", fibonacci_dp(10))
-    print("KMP匹配结果:", kmp_search(text, pattern))
+    # String Algorithms
+    print("Longest Common Subsequence Length:", longest_common_subsequence("abcde", "ace"))
+    print("Edit Distance:", edit_distance(s1, s2))
 
-    print("PCA降维到2维:\n", pca_reduce(data_samples, n_components=2))
-    print("t-SNE降维到2维:\n", tsne_reduce(data_samples))
-    print("UMAP降维到2维:\n", umap_reduce(data_samples))
+    # Fibonacci Sequence
+    n = 10
+    print("Fibonacci Recursive (n=10):", fibonacci_recursive(n))
+    print("Fibonacci DP (n=10):", fibonacci_dp(n))
 
+    # KMP Algorithm
+    print("KMP Search Result:", kmp_search(text, pattern))
 
+    # Dimensionality Reduction
+    pca_result = pca_reduce(data_samples, n_components=2)
+    print("PCA Reduced Data:\n", pca_result)
 
-from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
-from gensim.models import Word2Vec
-from gensim.utils import simple_preprocess
+    tsne_result = tsne_reduce(data_samples)
+    print("t-SNE Reduced Data:\n", tsne_result)
 
-# 示例文档列表
-documents = [
-    "I love machine learning and NLP",
-    "Word2Vec captures semantic relationships",
-    "Text processing is fun"
-]
-# 1. TF-IDF（词频-逆文档频率）
-def compute_tfidf(docs):
-    vectorizer = TfidfVectorizer()
-    tfidf_matrix = vectorizer.fit_transform(docs)
-    feature_names = vectorizer.get_feature_names_out()
-    return tfidf_matrix, feature_names
-# 2. 词袋模型（Bag of Words）
-def compute_bag_of_words(docs):
-    vectorizer = CountVectorizer()
-    count_matrix = vectorizer.fit_transform(docs)
-    feature_names = vectorizer.get_feature_names_out()
-    return count_matrix, feature_names
-# 3. Word2Vec 训练
-def train_word2vec(sentences, vector_size=100, window=5, min_count=1):
-    model = Word2Vec(sentences, vector_size=vector_size, window=window, min_count=min_count, sg=0)
-    return model
-# 计算TF-IDF
-tfidf_matrix, tfidf_features = compute_tfidf(documents)
-print("TF-IDF 特征名称:\n", tfidf_features)
-print("TF-IDF 矩阵:\n", tfidf_matrix.toarray())
-# 计算词袋模型
-bow_matrix, bow_features = compute_bag_of_words(documents)
-print("\n词袋模型 特征名称:\n", bow_features)
-print("词袋模型 矩阵:\n", bow_matrix.toarray())
-# 处理文本用于Word2Vec训练
-processed_sentences = [simple_preprocess(doc) for doc in documents]
-print("\n处理后的句子（分词结果）:")
-for idx, sentence in enumerate(processed_sentences):
-    print(f"句子 {idx + 1}: {sentence}")
-# 训练Word2Vec模型
-w2v_model = train_word2vec(processed_sentences)
+    umap_result = umap_reduce(data_samples)
+    print("UMAP Reduced Data:\n", umap_result)
 
-# 展示Word2Vec示例
-word = 'machine'
-if word in w2v_model.wv:
-    print(f"\nWord2Vec: '{word}' 的向量表示:\n", w2v_model.wv[word])
-else:
-    print(f"\nWord2Vec: '{word}' 不在模型词典中。")
+    # Text Vectorization
+    tfidf_matrix, tfidf_features = compute_tfidf(documents)
+    print("TF-IDF Feature Names:\n", tfidf_features)
+    print("TF-IDF Matrix:\n", tfidf_matrix.toarray())
 
-# 展示与指定词最相似词汇
-similar_words = w2v_model.wv.most_similar(word, topn=5) if word in w2v_model.wv else []
-print(f"\n与 '{word}' 最相似的词语:")
-for similar_word, similarity in similar_words:
-    print(f"词语: {similar_word}, 相似度: {similarity}")
+    bow_matrix, bow_features = compute_bag_of_words(documents)
+    print("\nBag of Words Feature Names:\n", bow_features)
+    print("Bag of Words Matrix:\n", bow_matrix.toarray())
 
-# 打印词与词之间的相似度
-word_pairs = [('machine', 'learning'), ('text', 'processing'), ('love', 'fun')]
-print("\n词与词之间的相似度:")
-for w1, w2 in word_pairs:
-    if w1 in w2v_model.wv and w2 in w2v_model.wv:
-        similarity = w2v_model.wv.similarity(w1, w2)
-        print(f"'{w1}' 与 '{w2}' 的相似度: {similarity}")
+    # Word2Vec Training
+    processed_sentences = []
+    for doc in documents:
+        tokens = simple_preprocess(doc)
+        processed_sentences.append(tokens)
+    print("\nProcessed Sentences:")
+    for idx, sentence in enumerate(processed_sentences):
+        print("Sentence {}: {}".format(idx + 1, sentence))
+
+    w2v_model = train_word2vec(processed_sentences)
+    word = 'machine'
+
+    if word in w2v_model.wv:
+        print("\nWord2Vec Vector for '{}':\n{}".format(word, w2v_model.wv[word]))
+        similar_words = w2v_model.wv.most_similar(word, topn=5)
+        print("\nMost similar words to '{}':".format(word))
+        for similar_word, similarity in similar_words:
+            print("Word: {}, Similarity: {}".format(similar_word, similarity))
     else:
-        print(f"'{w1}' 或 '{w2}' 不在模型词典中。")
+        print("\nWord '{}' not found in the model vocabulary.".format(word))
 
+    # Word similarity
+    word_pairs = [('machine', 'learning'), ('text', 'processing'), ('love', 'fun')]
+    print("\nWord Similarities:")
+    for w1, w2 in word_pairs:
+        if w1 in w2v_model.wv and w2 in w2v_model.wv:
+            similarity = w2v_model.wv.similarity(w1, w2)
+            print("'{}' and '{}' similarity: {}".format(w1, w2, similarity))
+        else:
+            print("One or both words '{}' and '{}' are not in the vocabulary.".format(w1, w2))
+
+if __name__ == "__main__":
+    main()
