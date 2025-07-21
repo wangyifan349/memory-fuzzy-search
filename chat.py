@@ -1,19 +1,18 @@
 """
-pip install flask scikit-learn numpy jieba
+pip install flask numpy faiss-cpu sklearn jieba sentence-transformers
 """
 
+from flask import Flask, request, jsonify, render_template_string  # Flask基本模块
+from sentence_transformers import SentenceTransformer            # 句向量模型
+import jieba                                                     # 中文分词
+import numpy as np                                              # 矩阵运算
+import faiss                                                    # 向量索引库
+from sklearn.feature_extraction.text import CountVectorizer     # 词袋向量
+import re                                                       # 正则处理
 
-from flask import Flask, render_template_string, request, jsonify
-from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
-import re
-import jieba
+app = Flask(__name__)                                           # 初始化Flask应用
 
-app = Flask(__name__)
-
-# 医学问答数据字典
-QA_DICT = {
+QA_DICT = {                                                    # 问答集合
     "什么是高血压？": "高血压是指动脉血压持续升高的慢性疾病。",
     "糖尿病有哪些症状？": """糖尿病常见症状包括多饮、多尿、多食和体重下降。
 示例代码（Python）：
@@ -28,554 +27,250 @@ def check_symptoms(symptoms):
     "什么是脑卒中？": "脑卒中是脑血管突然阻塞或破裂导致的脑功能障碍。",
 }
 
-# ---------------------------
-# 文本预处理和分词函数
-# ---------------------------
+questions = list(QA_DICT.keys())                               # 问题列表
+answers = list(QA_DICT.values())                               # 答案列表
 
-def chinese_tokenizer(text):
-    """
-    使用jieba进行中文分词，返回以空格分隔的词语字符串
-    清除空字符串
-    """
-    seg_list = jieba.lcut(text)  # 精确模式分词
-    filtered = []
-    for w in seg_list:
-        if w.strip() != "":  # 排除空白词
-            filtered.append(w)
-    return " ".join(filtered)  # 用空格拼接词语方便向量化
+def chinese_tokenizer(text):                                   # 中文分词，jieba切词并空格连接
+    return " ".join([w for w in jieba.lcut(text) if w.strip() != ""])
 
-def preprocess(text):
-    """
-    预处理文本，转小写，去标点，去两端空白
-    """
-    text = text.lower()
-    # 定义常见中英文标点符号，用正则去除
-    punctuation = r"[，。、！？【】（）《》“”‘’；：．,.!?()\-\"']"
-    text = re.sub(punctuation, "", text)  # 替换为空字符串
-    text = text.strip()
-    return text
+print("加载微软多语言微调模型...")                             # 加载句向量模型
+embed_model = SentenceTransformer("microsoft/Multilingual-MiniLM-L12-H384")
 
-# ---------------------------
-# 词袋模型 + 余弦相似度计算
-# ---------------------------
-def bag_of_words_cosine(query, corpus):
-    """
-    计算query与corpus中每个句子的余弦相似度
-    corpus: list[str], 句子列表
-    返回相似度列表，数值0~1，越大越相似
-    """
-    corpus_cut = []
-    for text in corpus:
-        # 分词
-        cut_text = chinese_tokenizer(text)
-        corpus_cut.append(cut_text)
-    # query分词
-    query_cut = chinese_tokenizer(query)
+print("计算BERT向量并建索引...")                               # 计算句向量（归一化），构建FAISS索引
+questions_embeds = embed_model.encode(questions, convert_to_numpy=True, normalize_embeddings=True).astype('float32')
+d = questions_embeds.shape[1]                                  # 向量维度
+index_bert = faiss.IndexFlatIP(d)                              # 余弦相似度用内积，IndexFlatIP
+index_bert.add(questions_embeds)                               # 加入索引
 
-    # 用CountVectorizer向量化
-    vectorizer = CountVectorizer()
-    # 拟合所有文本，包括语料和查询
-    combined_texts = corpus_cut[:]
-    combined_texts.append(query_cut)
-    vectorizer.fit(combined_texts)
+print("生成词袋向量并建索引...")                               # 词袋，先分词后vectorizer提取向量
+questions_corpus = [chinese_tokenizer(q) for q in questions]
+vectorizer = CountVectorizer()
+vectorizer.fit(questions_corpus)
+questions_bow = vectorizer.transform(questions_corpus)
+questions_bow_dense = questions_bow.toarray().astype('float32')  # 转numpy密集矩阵
+norms = np.linalg.norm(questions_bow_dense, axis=1, keepdims=True)  # 归一化避免0除
+norms[norms == 0] = 1
+questions_bow_normed = questions_bow_dense / norms
+dim_bow = questions_bow_normed.shape[1]
+index_bow = faiss.IndexFlatIP(dim_bow)
+index_bow.add(questions_bow_normed)
 
-    # 语料向量
-    corpus_vectors = []
-    for text in corpus_cut:
-        vector = vectorizer.transform([text])
-        corpus_vectors.append(vector)
+def query_bert_vector(question, top_k=1):                      # 查询BERT向量并返回最相似索引和得分
+    q_vec = embed_model.encode([question], convert_to_numpy=True, normalize_embeddings=True).astype('float32')
+    sims, ids = index_bert.search(q_vec, top_k)
+    return ids[0][0], float(sims[0][0])
 
-    # 查询向量
-    query_vector = vectorizer.transform([query_cut])
+def query_bow_vector(question, top_k=1):                       # 查询词袋向量并返回最相似索引和得分
+    q_cut = chinese_tokenizer(question)
+    q_vec = vectorizer.transform([q_cut]).toarray().astype('float32')
+    norm = np.linalg.norm(q_vec, axis=1, keepdims=True)
+    norm[norm == 0] = 1
+    q_norm = q_vec / norm
+    sims, ids = index_bow.search(q_norm, top_k)
+    return ids[0][0], float(sims[0][0])
 
-    similarity_scores = []
-    for vec in corpus_vectors:
-        # 余弦相似度计算，返回二维数组，两条向量相似度在[0,1]间
-        sim = cosine_similarity(query_vector, vec)
-        similarity_scores.append(sim[0][0])  # 取第0行第0列
-    return similarity_scores
-
-# ---------------------------
-# 编辑距离计算 Edit Distance
-# ---------------------------
-
-def edit_distance(s1, s2):
-    """
-    计算两个字符串s1和s2的编辑距离
-    动态规划实现
-    返回整数距离，越小越相似
-    """
-    m = len(s1)
-    n = len(s2)
-    # 初始化二维dp数组，大小(m+1)*(n+1)
-    dp = []
-    for i in range(m+1):
-        dp.append([0]*(n+1))
-
-    # 边界条件，空字符串转化
-    for i in range(m+1):
-        dp[i][0] = i  # s1前i个字符删除变空
-    for j in range(n+1):
-        dp[0][j] = j  # 空字符串插入j个字符变s2
-
-    # 状态转移，三种操作：删除，插入，替换
-    for i in range(1, m+1):
-        for j in range(1, n+1):
-            if s1[i-1] == s2[j-1]:
-                cost = 0  # 字符相等，无代价
-            else:
-                cost = 1  # 字符不等，替换代价1
-            dp[i][j] = min(
-                dp[i-1][j] + 1,    # 删除s1[i-1]
-                dp[i][j-1] + 1,    # 插入s2[j-1]
-                dp[i-1][j-1] + cost # 替换或不变
-            )
-    return dp[m][n]
-
-# ---------------------------
-# 最长公共子序列 LCS 长度计算
-# ---------------------------
-
-def lcs_length(s1, s2):
-    """
-    计算两个字符串的最长公共子序列长度，动态规划实现
-    返回整数长度，越大相似度越高
-    """
-    m = len(s1)
-    n = len(s2)
-    dp = []
-    # 初始化表格，尺寸(m+1)*(n+1)，全0
-    for i in range(m+1):
-        dp.append([0]*(n+1))
-
-    # 计算LCS状态转移
-    for i in range(1, m+1):
-        for j in range(1, n+1):
-            if s1[i-1] == s2[j-1]:
-                dp[i][j] = dp[i-1][j-1] + 1
-            else:
-                # 左和上取较大值
-                dp[i][j] = max(dp[i-1][j], dp[i][j-1])
-    return dp[m][n]
-
-# ---------------------------
-# 综合编辑距离和LCS计算相似度
-# ---------------------------
-
-def edit_lcs_similarity(s1, s2):
-    """
-    先预处理两个字符串，再计算编辑距离和LCS长度
-    计算两者对应的相似度后加权得出最终相似度
-    权重编辑距离2，LCS 8
-    返回0-1浮点数，相似度越大越好
-    """
-    s1_processed = preprocess(s1)  # 去标点小写
-    s2_processed = preprocess(s2)
-
-    ed = edit_distance(s1_processed, s2_processed)  # 编辑距离
-    lcs = lcs_length(s1_processed, s2_processed)   # LCS长度
-
-    max_len = max(len(s1_processed), len(s2_processed))
-    if max_len == 0:
-        return 1.0  # 空字符串相似度最高
-
-    ed_sim = 1 - (ed / max_len)  # 编辑距离相似度，距离越小相似度越大
-    lcs_sim = lcs / max_len       # LCS相似度，长度越大越相似
-    # 加权平均
-    similarity = (2 * ed_sim + 8 * lcs_sim) / 10
-    return similarity
-
-# ---------------------------
-# 匹配最优答案
-# ---------------------------
-
-def find_best_answer(question, algorithm="edit_lcs"):
-    """
-    给出用户question，根据algorithm计算相似度，
-    找到最匹配问题的答案。
-    algorithm可取:
-      - 'edit_lcs': 使用编辑距离+LCS加权算法
-      - 'cosine': 使用词袋向量 + 余弦相似度算法
-
-    返回答案字符串与相似度分数(float)
-    """
-    questions = list(QA_DICT.keys())
-    answers = list(QA_DICT.values())
-
-    if algorithm == "cosine":
-        scores = bag_of_words_cosine(question, questions)  # 词袋余弦相似度评分列表
-    else:
-        scores = []
-        for q in questions:
-            scores.append(edit_lcs_similarity(question, q))  # 编辑距离+LCS加权评分列表
-
-    max_score = -1
-    max_index = -1
-    # 找最大评分及其问题索引
-    for idx, sc in enumerate(scores):
-        if sc > max_score:
-            max_score = sc
-            max_index = idx
-
-    # 返回对应答案和分数
-    if max_index >= 0 and max_index < len(answers):
-        matched_answer = answers[max_index]
-    else:
-        matched_answer = "抱歉，未找到合适答案。"
-    return matched_answer, round(max_score, 3)
-
-# ---------------------------
-# Flask 路由
-# ---------------------------
-
-# 前端页面，使用render_template_string一次性渲染html+css+js
-HTML = '''
+HTML = '''                                                    # 前端HTML+CSS+JS，支持选择算法，聊天气泡，代码高亮复制
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>医学知识QA聊天</title>
+<title>医学QA聊天机器人</title>
 <style>
   body {
-    margin: 0;
-    background: #e5ddd5;
-    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-    -webkit-font-smoothing: antialiased;
-    font-size: 18px;
+    background: #f0f2f5; margin:0; font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; font-size:16px; color:#333;
+    display: flex; justify-content: center; align-items: center; height: 100vh;
   }
   #chat-container {
-    max-width: 720px;
-    margin: 30px auto;
-    background: #fff;
-    border-radius: 10px;
-    display: flex;
-    flex-direction: column;
-    height: 90vh;
-    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    width: 600px; max-height: 90vh; background:white; border-radius: 12px; box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
+    display: flex; flex-direction: column; overflow: hidden;
   }
   #header {
-    padding: 15px 20px;
-    background: #075e54;
-    color: white;
-    font-weight: bold;
-    font-size: 24px;
-    text-align: center;
-    border-radius: 10px 10px 0 0;
-    position: relative;
-  }
-  /* 右上角选择框容器 */
-  #algorithm-container {
-    position: absolute;
-    top: 12px;
-    right: 20px;
+    background:#0a74da; padding: 16px; font-size: 24px; font-weight: 700; color: white; position: relative; user-select: none;
   }
   #algorithm-select {
-    font-size: 14px;
-    padding: 4px 8px;
-    border-radius: 8px;
-    border: none;
-    cursor: pointer;
+    position: absolute; right: 20px; top: 14px; font-size: 14px; padding: 6px 10px; border-radius: 6px; border: none; cursor: pointer;
   }
   #chat-box {
-    flex: 1;
-    overflow-y: auto;
-    padding: 15px;
-    background: #ece5dd;
+    padding: 16px; flex: 1; overflow-y: auto; background: #e9ebee;
+    display: flex; flex-direction: column; gap: 12px;
   }
   .message {
-    display: flex;
-    margin-bottom: 18px;
-    max-width: 80%;
-    word-wrap: break-word;
-    line-height: 1.4;
-    font-size: 18px;
-    position: relative;
+    max-width: 75%; line-height: 1.5; word-break: break-word; white-space: pre-wrap; position: relative; display: flex;
   }
   .message.user {
-    justify-content: flex-end;
+    align-self: flex-end; justify-content: flex-end;
   }
   .message.bot {
-    justify-content: flex-start;
+    align-self: flex-start; justify-content: flex-start;
   }
   .bubble {
-    padding: 12px 18px;
-    border-radius: 20px;
-    max-width: 100%;
-    white-space: pre-wrap;
-    white-space: -moz-pre-wrap; /* Firefox */
-    white-space: -pre-wrap; /* Opera <7 */
-    white-space: -o-pre-wrap; /* Opera 7 */
-    word-wrap: break-word;
+    border-radius: 16px; padding: 12px 18px; font-size: 15px; box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    position: relative; white-space: pre-wrap;
   }
   .message.user .bubble {
-    background: #dcf8c6;
-    color: #111;
-    border-bottom-right-radius: 4px;
+    background: #a0e75a; color: #222; border-bottom-right-radius: 6px;
+    animation: fadeInRight 0.3s ease forwards;
   }
   .message.bot .bubble {
-    background: white;
-    color: #333;
-    border-bottom-left-radius: 4px;
+    background: white; color: #222; border-bottom-left-radius: 6px;
+    animation: fadeInLeft 0.3s ease forwards;
   }
-  #input-area {
-    display: flex;
-    padding: 10px 15px;
-    background: #f0f0f0;
-    border-top: 1px solid #ddd;
-    align-items: center;
-  }
-  #user-input {
-    flex: 1;
-    font-size: 18px;
-    padding: 10px 15px;
-    border-radius: 20px;
-    border: 1px solid #ccc;
-    outline: none;
-    margin-right: 10px;
-  }
-  #send-btn {
-    background: #25d366;
-    border: none;
-    color: white;
-    font-weight: bold;
-    padding: 12px 20px;
-    border-radius: 20px;
-    cursor: pointer;
-    font-size: 18px;
-    transition: background 0.3s ease;
-  }
-  #send-btn:hover {
-    background: #128c4a;
-  }
-  /* 代码块样式 */
   pre {
-    position: relative;
-    background: #f6f8fa;
-    border-radius: 6px;
-    padding: 12px 40px 12px 12px;
-    font-size: 16px;
-    font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
-    overflow-x: auto;
-    white-space: pre-wrap;
-    word-wrap: break-word;
+    background: #282c34; color: #abb2bf; font-size: 14px; font-family: "Fira Code", Consolas, Monaco, "Courier New", monospace;
+    border-radius: 10px; padding: 12px 16px; overflow-x: auto; margin:10px 0 0 0; line-height: 1.4;
   }
-  /* 复制按钮样式 */
+  .code-block {
+    position: relative;
+  }
   .copy-btn {
-    position: absolute;
-    top: 6px;
-    right: 6px;
-    background: #1da57a;
-    border: none;
-    color: white;
-    font-weight: bold;
-    padding: 2px 8px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 12px;
-    opacity: 0.75;
-    transition: opacity 0.3s ease;
-    z-index: 10;
+    position: absolute; top: 8px; right: 10px; background: #0a74da;
+    border: none; color: white; border-radius: 6px; font-size: 12px;
+    padding: 3px 8px; cursor:pointer; opacity: 0.8; user-select:none;
+    transition: opacity 0.3s;
   }
   .copy-btn:hover {
     opacity: 1;
   }
+  #input-area {
+    display: flex; padding: 12px 16px; border-top: 1px solid #ddd; background: #fafafa; align-items: center;
+  }
+  #user-input {
+    flex: 1; font-size: 16px; padding: 10px 16px; border-radius: 24px; border: 1.5px solid #ccc; outline: none;
+    transition: border-color 0.3s;
+  }
+  #user-input:focus {
+    border-color: #0a74da;
+  }
+  #send-btn {
+    margin-left: 16px; background: #0a74da; color: white; font-weight: 600;
+    padding: 10px 26px; border-radius: 24px; border:none; cursor:pointer;
+    transition: background 0.3s;
+  }
+  #send-btn:disabled {
+    background: #7aaeea; cursor: not-allowed;
+  }
+  #send-btn:hover:not(:disabled) {
+    background: #085abd;
+  }
+  @keyframes fadeInRight {
+    0% {opacity: 0; transform: translateX(40px);}
+    100% {opacity: 1; transform: translateX(0px);}
+  }
+  @keyframes fadeInLeft {
+    0% {opacity: 0; transform: translateX(-40px);}
+    100% {opacity: 1; transform: translateX(0px);}
+  }
 </style>
 </head>
 <body>
-<div id="chat-container">
-  <div id="header">
-    医学知识问答聊天
-    <div id="algorithm-container" title="选择相似度算法">
-      <select id="algorithm-select">
-        <option value="edit_lcs" selected>编辑距离(2) + LCS(8) 加权</option>
-        <option value="cosine">词袋向量 + 余弦相似度</option>
+  <div id="chat-container">
+    <div id="header">
+      医学QA聊天机器人
+      <select id="algorithm-select" title="选择问答算法">
+        <option value="bert" selected>微软微调句向量(BERT)</option>
+        <option value="bow">词袋 + FAISS</option>
       </select>
     </div>
+    <div id="chat-box" aria-live="polite" aria-atomic="false"></div>
+    <form id="input-area" onsubmit="return false;">
+      <input id="user-input" type="text" autocomplete="off" placeholder="请输入医学相关问题..." aria-label="输入问题" />
+      <button id="send-btn" type="button" aria-label="发送问题">发送</button>
+    </form>
   </div>
-  <div id="chat-box"></div>
-  <div id="input-area">
-    <input type="text" id="user-input" placeholder="请输入问题..." autocomplete="off" />
-    <button id="send-btn">发送</button>
-  </div>
-</div>
-
 <script>
-  const chatBox = document.getElementById("chat-box");
-  const userInput = document.getElementById("user-input");
-  const sendBtn = document.getElementById("send-btn");
-  const algorithmSelect = document.getElementById("algorithm-select");
-
-  // 转义HTML，防止注入
-  function escapeHtml(text){
-    return text.replace(/&/g, "&amp;")
-               .replace(/</g, "&lt;")
-               .replace(/>/g, "&gt;")
-               .replace(/"/g, "&quot;")
-               .replace(/'/g, "&#039;");
+const chatBox = document.getElementById('chat-box');
+const userInput = document.getElementById('user-input');
+const sendBtn = document.getElementById('send-btn');
+const algoSelect = document.getElementById('algorithm-select');
+function escapeHtml(text) { return text.replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m])); }
+function parseMessage(text) {
+  const regex = /```(\w*)\n([\s\S]*?)```/g;
+  let segments = [], lastIndex=0, match;
+  while((match=regex.exec(text))!==null){
+    if(match.index>lastIndex) segments.push({type:'text',content:text.slice(lastIndex,match.index)});
+    segments.push({type:'code',lang:match[1],content:match[2]});
+    lastIndex = regex.lastIndex;
   }
-
-  // 将文本中的代码块```包裹的内容转换成带复制按钮的<pre><code>形式，保留缩进
-  function formatMessageWithCode(text){
-    // 正则匹配代码块，支持多段代码
-    const codeBlockRegex = /```(\w*)\n([\s\S]*?)```/g;
-    let parts = [];
-    let lastIndex = 0;
-    let match;
-    while((match = codeBlockRegex.exec(text)) !== null){
-      let index = match.index;
-      // 普通文本部分
-      let normalText = text.substring(lastIndex, index);
-      if(normalText.trim() !== ""){
-        parts.push({type:"text", content: normalText});
-      }
-      // 代码块内容
-      parts.push({type:"code", lang: match[1], content: match[2]});
-      lastIndex = codeBlockRegex.lastIndex;
-    }
-    // 结尾普通文本
-    let tailText = text.substring(lastIndex);
-    if(tailText.trim() !== ""){
-      parts.push({type:"text", content: tailText});
-    }
-
-    // 构造html字符串
-    let htmlArr = parts.map(part => {
-      if(part.type === "text"){
-        return "<span>" + escapeHtml(part.content) + "</span>";
-      } else if(part.type === "code"){
-        return `
-          <pre>
-            <button class="copy-btn" title="复制代码">复制</button>
-            <code class="language-${escapeHtml(part.lang)}">${escapeHtml(part.content)}</code>
-          </pre>
-        `;
-      }
-    });
-    return htmlArr.join("");
-  }
-
-  // 添加消息到聊天框
-  function addMessage(user, text){
-    let messageDiv = document.createElement("div");
-    messageDiv.classList.add("message");
-    messageDiv.classList.add(user);
-
-    // 格式化文本，带代码高亮和复制按钮
-    messageDiv.innerHTML = `<div class="bubble">${formatMessageWithCode(text)}</div>`;
-    
-    chatBox.appendChild(messageDiv);
-    chatBox.scrollTop = chatBox.scrollHeight;
-
-    // 绑定复制按钮点击事件
-    const copyBtns = messageDiv.querySelectorAll(".copy-btn");
-    copyBtns.forEach(btn => {
-      btn.addEventListener("click", function(){
-        let codeEl = btn.nextElementSibling;
-        if(!codeEl) return;
-        let codeText = codeEl.textContent;
-        navigator.clipboard.writeText(codeText).then(() => {
-          btn.textContent = "复制成功";
-          setTimeout(() => btn.textContent = "复制", 1500);
-        }).catch(() => {
-          btn.textContent = "复制失败";
-          setTimeout(() => btn.textContent = "复制", 1500);
-        });
+  if(lastIndex<text.length) segments.push({type:'text',content:text.slice(lastIndex)});
+  return segments;
+}
+function renderMessage(text) {
+  const segments = parseMessage(text);
+  return segments.map(seg=>{
+    if(seg.type==='text') return `<span>${escapeHtml(seg.content)}</span>`;
+    return `<div class="code-block"><pre><button aria-label="复制代码" class="copy-btn">复制</button><code>${escapeHtml(seg.content)}</code></pre></div>`;
+  }).join('');
+}
+function addMessage(user, text) {
+  const div=document.createElement("div");
+  div.className="message "+user;
+  div.innerHTML=`<div class="bubble">${renderMessage(text)}</div>`;
+  chatBox.appendChild(div);
+  chatBox.scrollTo({top: chatBox.scrollHeight, behavior: 'smooth'});
+  div.querySelectorAll('.copy-btn').forEach(btn=>{
+    btn.onclick = ()=>{
+      const code = btn.nextElementSibling.textContent;
+      navigator.clipboard.writeText(code).then(()=>{
+        btn.textContent = '复制成功';
+        setTimeout(()=>btn.textContent='复制',1600);
+      }).catch(()=>{
+        btn.textContent = '复制失败';
+        setTimeout(()=>btn.textContent='复制',1600);
       });
-    });
-  }
-
-  // 发送用户问题到后端
-  function sendQuestion(){
-    let question = userInput.value.trim();
-    if(question === ""){
-      return;
-    }
-    addMessage("user", question);
-    userInput.value = "";
-    sendBtn.disabled = true;
-    userInput.disabled = true;
-
-    let alg = algorithmSelect.value;
-
-    let xhr = new XMLHttpRequest();
-    xhr.open("POST", "/query", true);
-    xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-
-    xhr.onreadystatechange = function(){
-      if(xhr.readyState === 4){
-        sendBtn.disabled = false;
-        userInput.disabled = false;
-        if(xhr.status === 200){
-          try {
-            let resp = JSON.parse(xhr.responseText);
-            addMessage("bot", resp.answer + "\n(相似度得分: " + resp.score + ")");
-          } catch(e) {
-            addMessage("bot", "服务器返回异常，请稍后重试。");
-          }
-        } else {
-          addMessage("bot", "请求失败，状态码："+xhr.status);
-        }
-        userInput.focus();
-      }
     };
-
-    let postData = {
-      question: question,
-      algorithm: alg
-    };
-    xhr.send(JSON.stringify(postData));
-  }
-
-  sendBtn.addEventListener("click", sendQuestion);
-  // 支持回车发送
-  userInput.addEventListener("keydown", function(e){
-    if(e.key === "Enter"){
-      sendQuestion();
-      e.preventDefault();
-    }
   });
-
-  window.onload = function(){
-    userInput.focus();
-  };
+}
+function sendQuestion() {
+  const q = userInput.value.trim();
+  if(!q) return;
+  addMessage('user', q);
+  userInput.value = '';
+  sendBtn.disabled=true; userInput.disabled=true;
+  const algo = algoSelect.value;
+  fetch('/query', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({question:q, algorithm:algo})
+  }).then(resp=>resp.json())
+  .then(data=>{
+    addMessage('bot', data.answer+'\n(相似度得分: '+data.score.toFixed(3)+')');
+  }).catch(()=>{
+    addMessage('bot', '请求失败，请稍后再试。');
+  }).finally(()=>{
+    sendBtn.disabled=false; userInput.disabled=false; userInput.focus();
+  });
+}
+sendBtn.onclick = sendQuestion;
+userInput.onkeydown=e=>{
+  if(e.key==='Enter'&&!e.shiftKey){
+    sendQuestion();
+    e.preventDefault();
+  }
+};
+window.onload=()=>userInput.focus();
 </script>
 </body>
 </html>
 '''
 
-@app.route("/")
+@app.route('/')
 def index():
-    """
-    返回聊天HTML页面
-    """
-    return render_template_string(HTML)
+    return render_template_string(HTML)                         # 首页返回HTML
 
-@app.route("/query", methods=["POST"])
+@app.route('/query', methods=['POST'])
 def query():
-    """
-    AJAX接口，接收JSON格式：
-    {
-      "question": "用户提问",
-      "algorithm": "edit_lcs"或"cosine"
-    }
-    返回JSON：
-    {
-      "answer": "回复内容",
-      "score": 相似度分数(float)
-    }
-    """
-    data = request.json
-    question = data.get("question", "")
-    if question == "":
-        # 空字符串返回提示
+    data = request.get_json(force=True)
+    question = data.get('question', '').strip()
+    algorithm = data.get('algorithm', 'bert')
+    if not question:
         return jsonify({"answer": "请输入问题。", "score": 0})
-    algorithm = data.get("algorithm", "edit_lcs")
+    if algorithm == 'bow':
+        idx, score = query_bow_vector(question)                # 词袋算法查询
+    else:
+        idx, score = query_bert_vector(question)               # BERT算法查询
+    answer = answers[idx]
+    return jsonify({"answer": answer, "score": score})          # 返回答案和相似度分数
 
-    answer, score = find_best_answer(question, algorithm)
-
-    return jsonify({"answer": answer, "score": score})
-
-if __name__ == "__main__":
-    # 运行Flask调试模式
-    app.run(debug=True)
+if __name__ == '__main__':
+    app.run(debug=True)                                         # 启动服务，调试模式
