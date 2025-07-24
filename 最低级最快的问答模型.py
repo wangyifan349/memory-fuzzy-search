@@ -1,76 +1,73 @@
------BEGIN PGP MESSAGE-----
+# -*- coding: utf-8 -*-
+from flask import Flask, request, jsonify
 
-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
-DTIYvnEs
-=Lopx
------END PGP MESSAGE-----
+app = Flask(__name__)
+
+def lcs_length(a: str, b: str) -> int:
+    """
+    计算字符串 a 和 b 的最长公共子序列长度
+    动态规划算法，时间复杂度 O(len(a)*len(b))
+    """
+    m, n = len(a), len(b)
+    dp = [[0]*(n+1) for _ in range(m+1)]
+    for i in range(1, m+1):
+        for j in range(1, n+1):
+            if a[i-1] == b[j-1]:
+                dp[i][j] = dp[i-1][j-1] + 1
+            else:
+                dp[i][j] = max(dp[i-1][j], dp[i][j-1])
+    return dp[m][n]
+
+def find_best_answer(question: str, qa_pairs: list) -> (str, float):
+    """
+    在 qa_pairs 中检索与 question LCS 最长的问答对，
+    返回 (最佳答案, 相似度分数)
+    相似度分数 = LCS_length / max(len(question), len(candidate_question))
+    """
+    best_score = 0.0
+    best_answer = "抱歉，我无法回答该问题。"
+    for q, a in qa_pairs:
+        l = lcs_length(question, q)
+        score = l / max(len(question), len(q))
+        if score > best_score:
+            best_score = score
+            best_answer = a
+    return best_answer, best_score
+
+# 预定义医学问答对（示例）
+QA_PAIRS = [
+    ("什么是高血压？", "高血压是指动脉血压持续升高，收缩压≥140mmHg和/或舒张压≥90mmHg。"),
+    ("高血压有哪些症状？", "多数高血压患者早期无明显症状，严重者可头痛、头晕、心悸、耳鸣等。"),
+    ("如何预防骨质疏松？", "预防骨质疏松应注意钙和维生素D的摄入、适量运动、戒烟限酒、避免过度减重。"),
+    ("糖尿病的常见并发症有哪些？", "糖尿病并发症可分为急性并发症和慢性并发症，慢性包括心血管病变、肾病、视网膜病变、神经病变等。"),
+    ("什么是冠心病？", "冠心病是冠状动脉粥样硬化引起心肌缺血、缺氧或坏死的疾病。"),
+]
+
+@app.route("/answer", methods=["GET"])
+def answer():
+    """
+    HTTP GET 参数：
+      question: 用户的提问
+    返回 JSON：
+      {
+        "question": "...",
+        "answer": "...",
+        "score": 0.75
+      }
+    """
+    user_q = request.args.get("question", "").strip()
+    if not user_q:
+        return jsonify({
+            "error": "缺少 question 参数或参数为空"
+        }), 400
+
+    best_answer, score = find_best_answer(user_q, QA_PAIRS)
+    return jsonify({
+        "question": user_q,
+        "answer": best_answer,
+        "score": round(score, 4)
+    })
+
+if __name__ == "__main__":
+    # 默认监听 0.0.0.0:5000
+    app.run(host="0.0.0.0", port=5000)
