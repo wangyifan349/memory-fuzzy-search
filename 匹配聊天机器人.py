@@ -1,269 +1,260 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+#pip install jieba scikit-learn faiss-cpu
 import sys
-import json
-import threading
-import hashlib
 import os
+import json
+import hashlib
+import math
+import jieba
+from collections import Counter
+from sklearn.feature_extraction.text import TfidfVectorizer
+import numpy as np
 
-from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QTextEdit,
-                             QLineEdit, QPushButton, QLabel, QFileDialog, QMessageBox)
-from PyQt5.QtCore import Qt, pyqtSignal, QObject
+# 尝试导入 faiss（兼容 cpu/gpu 包名）
+try:
+    import faiss
+except Exception as e:
+    raise ImportError("请先安装 faiss-cpu（或 faiss），例如：pip install faiss-cpu") from e
 
-# ---------------------------------------------------------
+# -------------------- 工具函数 --------------------
 
-def lcs_length(str1, str2):
-    """计算两个字符串的最长公共子序列长度"""
-    m = len(str1)
-    n = len(str2)
-    dp = []
-    for i in range(m+1):
-        dp_row = []
-        for j in range(n+1):
-            dp_row.append(0)
-        dp.append(dp_row)
-    # 动态规划计算LCS长度
+def lcs_length(a: str, b: str) -> int:
+    m, n = len(a), len(b)
+    dp = [[0]*(n+1) for _ in range(m+1)]
     for i in range(1, m+1):
         for j in range(1, n+1):
-            if str1[i-1] == str2[j-1]:
+            if a[i-1] == b[j-1]:
                 dp[i][j] = dp[i-1][j-1] + 1
             else:
-                if dp[i-1][j] > dp[i][j-1]:
-                    dp[i][j] = dp[i-1][j]
-                else:
-                    dp[i][j] = dp[i][j-1]
+                dp[i][j] = max(dp[i-1][j], dp[i][j-1])
     return dp[m][n]
 
-# ---------------------------------------------------------
-
-def similarity_score(query, question):
-    """基于LCS计算相似度得分"""
-    lcs = lcs_length(query, question)
-    avg_len = (len(query) + len(question)) / 2
+def lcs_similarity(a: str, b: str) -> float:
+    if not a and not b:
+        return 1.0
+    avg_len = (len(a) + len(b)) / 2.0
     if avg_len == 0:
-        return 0
-    score = lcs / avg_len
-    return score
+        return 0.0
+    return lcs_length(a, b) / avg_len
 
-# ---------------------------------------------------------
-
+def jieba_tokenize(text: str) -> str:
+    # 返回以空格分隔的 token 字符串，方便给 sklearn 的 TfidfVectorizer 使用
+    return " ".join(jieba.lcut(text))
+def md5_hash(question: str, answer: str) -> str:
+    return hashlib.md5((question + answer).encode('utf-8')).hexdigest()
+# -------------------- QASystem with TF-IDF + FAISS --------------------
 class QASystem:
-    """问答系统类"""
-    def __init__(self):
-        self.qa_list = []          # 存储QA对的列表
-        self.qa_hash_set = set()   # 用于去重的哈希集合
-        self.history = []          # 记录对话历史
+    def __init__(self, weight_tfidf=0.2, weight_lcs=0.8, preload=None):
+        self.qa_list = []            # 每项：{'question','answer','q_text_tokenized'}
+        self.qa_hash_set = set()
+        self.history = []
+        self.weight_tfidf = weight_tfidf
+        self.weight_lcs = weight_lcs
 
-    def add_qa_list(self, qa_list):
-        """添加QA列表，并进行去重处理"""
-        added_count = 0
+        # TF-IDF 和 FAISS
+        self.vectorizer = TfidfVectorizer(token_pattern=r"(?u)\b\w+\b")  # 我们传入已经用空格分词的字符串
+        self.tfidf_matrix = None     # np.array shape (n, d)
+        self.index = None            # faiss index
+        if preload:
+            self.add_qa_list(preload, rebuild_index=True)
+    def add_qa_list(self, qa_list, rebuild_index=True):
+        added = 0
         for qa in qa_list:
-            question = qa['question'].strip().replace('\n', ' ')
-            answer = qa['answer'].strip().replace('\n', ' ')
-            # 生成QA对的唯一哈希值
-            qa_hash = hashlib.md5((question + answer).encode('utf-8')).hexdigest()
-            if qa_hash not in self.qa_hash_set:
-                self.qa_list.append({'question': question, 'answer': answer})
-                self.qa_hash_set.add(qa_hash)
-                added_count += 1
-        return added_count
-
-    def find_best_match(self, user_question, threshold=0.3):
-        """查找最佳匹配的答案"""
-        best_score = 0
-        best_answer = "抱歉，我暂时无法回答您的问题。"
-        for qa in self.qa_list:
-            score = similarity_score(user_question, qa['question'])
-            if score > best_score:
-                best_score = score
-                best_answer = qa['answer']
-        if best_score >= threshold:
-            return best_answer
+            q = qa.get('question', '').strip().replace('\n', ' ')
+            a = qa.get('answer', '').strip().replace('\n', ' ')
+            if q == '' and a == '':
+                continue
+            h = md5_hash(q, a)
+            if h in self.qa_hash_set:
+                continue
+            q_tokenized = jieba_tokenize(q)
+            self.qa_list.append({'question': q, 'answer': a, 'q_tokenized': q_tokenized})
+            self.qa_hash_set.add(h)
+            added += 1
+        if added > 0 and rebuild_index:
+            self._rebuild_tfidf_and_faiss()
+        return added
+    def _rebuild_tfidf_and_faiss(self):
+        # 生成 TF-IDF 矩阵（稠密）
+        corpus = [item['q_tokenized'] for item in self.qa_list]
+        # 重新拟合 vectorizer（简单实现）
+        self.vectorizer = TfidfVectorizer(token_pattern=r"(?u)\b\w+\b")
+        tfidf_sparse = self.vectorizer.fit_transform(corpus)  # shape (n, d) sparse
+        tfidf = tfidf_sparse.toarray().astype('float32')      # dense float32 for faiss
+        self.tfidf_matrix = tfidf
+        # 构建 faiss 索引（使用 Inner Product on normalized vectors for cosine）
+        # 先 L2 归一化每行 -> cosine 等于 inner product
+        norms = np.linalg.norm(tfidf, axis=1, keepdims=True)
+        norms[norms == 0] = 1.0
+        tfidf_normed = tfidf / norms
+        dim = tfidf_normed.shape[1]
+        if self.index is None:
+            # 使用 IndexFlatIP 做精确搜索（小数据集合适）
+            self.index = faiss.IndexFlatIP(dim)
         else:
-            return "抱歉，我暂时无法回答您的问题。"
-
+            # 如果已有索引，先删除并重建（简单方式）
+            self.index = faiss.IndexFlatIP(dim)
+        self.index.add(tfidf_normed.astype('float32'))  # 添加向量
+        # store normalized matrix for scoring convenience
+        self._tfidf_normed = tfidf_normed
+    def _query_tfidf_scores(self, query: str, top_k=5):
+        if self.tfidf_matrix is None or len(self.qa_list) == 0:
+            return [], []
+        q_tok = jieba_tokenize(query)
+        q_vec_sparse = self.vectorizer.transform([q_tok])
+        q_vec = q_vec_sparse.toarray().astype('float32')
+        # 归一化
+        norm = np.linalg.norm(q_vec)
+        if norm == 0:
+            q_normed = q_vec
+        else:
+            q_normed = q_vec / norm
+        # 使用 faiss 搜索 inner product（等价 cosine）
+        D, I = self.index.search(q_normed, top_k)  # D: scores, I: indices
+        scores = D[0].tolist()
+        indices = I[0].tolist()
+        return indices, scores
+    def find_best_match(self, user_question, top_k=10, threshold=0.3):
+        # 先用 tfidf/faiss 得到候选
+        indices, tfidf_scores = self._query_tfidf_scores(user_question, top_k=top_k)
+        best_score = -1.0
+        best_answer = "抱歉，我暂时无法回答您的问题。"
+        best_details = (0.0, 0.0, -1)  # combined, tfidf, lcs, idx
+        # 如果没有候选（如空索引），遍历全部
+        candidate_idxs = [i for i in indices if i != -1] if indices else list(range(len(self.qa_list)))
+        if not candidate_idxs:
+            candidate_idxs = list(range(len(self.qa_list)))
+        for pos, idx in enumerate(candidate_idxs):
+            qa = self.qa_list[idx]
+            tfidf_score = tfidf_scores[pos] if pos < len(tfidf_scores) else 0.0
+            lcs_sim = lcs_similarity(user_question, qa['question'])
+            combined = self.weight_tfidf * tfidf_score + self.weight_lcs * lcs_sim
+            if combined > best_score:
+                best_score = combined
+                best_answer = qa['answer']
+                best_details = (combined, tfidf_score, lcs_sim, idx)
+        if best_score >= threshold:
+            return best_answer, best_score, best_details
+        else:
+            return "抱歉，我暂时无法回答您的问题。", best_score, best_details
     def ask(self, user_question):
-        """处理用户提问并返回答案"""
-        answer = self.find_best_match(user_question)
-        self.history.append({'question': user_question, 'answer': answer})
-        return answer
-
-# ---------------------------------------------------------
-
+        answer, score, details = self.find_best_match(user_question)
+        self.history.append({
+            'question': user_question,
+            'answer': answer,
+            'score': score,
+            'tfidf': details[1] if len(details) > 1 else 0.0,
+            'lcs': details[2] if len(details) > 2 else 0.0
+        })
+        return answer, score, details
+# -------------------- JSON 加载与命令行 --------------------
 def load_qa_from_file(filepath):
-    """从JSON文件加载QA列表"""
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
-            qa_list = json.load(f)
-            return qa_list
+            data = json.load(f)
+            if isinstance(data, list):
+                return data
+            if isinstance(data, dict) and 'qa' in data and isinstance(data['qa'], list):
+                return data['qa']
+            # 尝试从 dict 中抽取 question/answer
+            if isinstance(data, dict):
+                possible = []
+                for v in data.values():
+                    if isinstance(v, dict) and 'question' in v and 'answer' in v:
+                        possible.append({'question': v['question'], 'answer': v['answer']})
+                if possible:
+                    return possible
+            raise ValueError("JSON 格式不受支持（需要 list 或 包含 'qa' 键）。")
     except Exception as e:
-        QMessageBox.critical(None, "错误", f"加载QA数据失败：{e}")
+        print(f"[错误] 加载文件 '{filepath}' 失败：{e}")
         return None
-
-# ---------------------------------------------------------
-
-class SignalBus(QObject):
-    """用于线程间通信的信号总线"""
-    display_message_signal = pyqtSignal(str, str)
-    update_qa_count_signal = pyqtSignal(int)
-
-# ---------------------------------------------------------
-
-class ChatWindow(QWidget):
-    """聊天窗口类"""
-    def __init__(self):
-        super().__init__()
-        self.qa_system = QASystem()
-        self.signal_bus = SignalBus()
-        self.init_ui()
-        self.connect_signals()
-        self.update_qa_count()
-
-    def init_ui(self):
-        """初始化界面"""
-        self.setWindowTitle("智能问答系统")
-        self.setGeometry(100, 100, 800, 600)
-        self.setStyleSheet("background-color: #F0F0F0;")
-        self.setFixedSize(800, 600)
-
-        # 主布局
-        main_layout = QVBoxLayout()
-
-        # 菜单按钮布局
-        menu_layout = QHBoxLayout()
-        self.load_button = QPushButton("加载QA数据")
-        self.load_button.setFixedHeight(40)
-        self.load_button.setStyleSheet("font-size: 16px;")
-        self.clear_button = QPushButton("清空聊天")
-        self.clear_button.setFixedHeight(40)
-        self.clear_button.setStyleSheet("font-size: 16px;")
-        self.exit_button = QPushButton("退出")
-        self.exit_button.setFixedHeight(40)
-        self.exit_button.setStyleSheet("font-size: 16px;")
-        menu_layout.addWidget(self.load_button)
-        menu_layout.addWidget(self.clear_button)
-        menu_layout.addWidget(self.exit_button)
-        menu_layout.addStretch()
-
-        # 聊天显示区域
-        self.chat_display = QTextEdit()
-        self.chat_display.setReadOnly(True)
-        self.chat_display.setStyleSheet("font-size: 16px; background-color: white;")
-        self.chat_display.setFixedHeight(420)
-
-        # QA计数标签
-        self.qa_count_label = QLabel("已加载QA对数：0")
-        self.qa_count_label.setStyleSheet("font-size: 14px;")
-
-        # 输入区域布局
-        input_layout = QHBoxLayout()
-        self.user_input = QLineEdit()
-        self.user_input.setStyleSheet("font-size: 16px;")
-        self.user_input.setPlaceholderText("请输入您的问题...")
-        self.send_button = QPushButton("发送")
-        self.send_button.setFixedWidth(80)
-        self.send_button.setStyleSheet("font-size: 16px;")
-        input_layout.addWidget(self.user_input)
-        input_layout.addWidget(self.send_button)
-
-        # 组装布局
-        main_layout.addLayout(menu_layout)
-        main_layout.addWidget(self.chat_display)
-        main_layout.addWidget(self.qa_count_label)
-        main_layout.addLayout(input_layout)
-        self.setLayout(main_layout)
-
-    def connect_signals(self):
-        """连接信号和槽"""
-        self.load_button.clicked.connect(self.load_qa_files)
-        self.clear_button.clicked.connect(self.clear_chat)
-        self.exit_button.clicked.connect(self.close)
-        self.send_button.clicked.connect(self.send_message)
-        self.user_input.returnPressed.connect(self.send_message)
-        self.signal_bus.display_message_signal.connect(self.display_message)
-        self.signal_bus.update_qa_count_signal.connect(self.update_qa_count_label)
-
-    def load_qa_files(self):
-        """加载QA数据文件（新线程）"""
-        threading.Thread(target=self._load_qa_files_thread).start()
-
-    def _load_qa_files_thread(self):
-        """QA数据加载线程函数"""
-        options = QFileDialog.Options()
-        files, _ = QFileDialog.getOpenFileNames(self, "选择QA数据文件", "",
-                                                "JSON文件 (*.json);;所有文件 (*)", options=options)
-        if files:
-            total_added = 0
-            total_files = len(files)
-            for file_path in files:
-                qa_list = load_qa_from_file(file_path)
-                if qa_list is not None:
-                    added_count = self.qa_system.add_qa_list(qa_list)
-                    total_added += added_count
-                    file_name = os.path.basename(file_path)
-                    self.signal_bus.display_message_signal.emit("系统",
-                            f"从 '{file_name}' 加载了 {added_count} 个新的QA对。")
-            self.signal_bus.update_qa_count_signal.emit(len(self.qa_system.qa_list))
-            if total_added > 0:
-                self.signal_bus.display_message_signal.emit("系统",
-                        f"已从 {total_files} 个文件加载 {total_added} 个新的QA对。")
-            else:
-                self.signal_bus.display_message_signal.emit("系统", "没有添加新的QA对。")
-        else:
-            self.signal_bus.display_message_signal.emit("系统", "未选择任何文件。")
-
-    def update_qa_count_label(self, count):
-        """更新QA计数标签"""
-        self.qa_count_label.setText(f"已加载QA对数：{count}")
-
-    def update_qa_count(self):
-        """初始更新QA计数标签"""
-        count = len(self.qa_system.qa_list)
-        self.qa_count_label.setText(f"已加载QA对数：{count}")
-
-    def send_message(self):
-        """发送用户消息"""
-        if not self.qa_system.qa_list:
-            QMessageBox.warning(self, "提示", "请先加载QA数据。")
-            return
-        user_text = self.user_input.text().strip()
-        if user_text == "":
-            return
-        self.display_message("用户", user_text)
-        threading.Thread(target=self._get_bot_response, args=(user_text,)).start()
-        self.user_input.clear()
-
-    def _get_bot_response(self, user_text):
-        """获取机器人回复（新线程）"""
-        bot_response = self.qa_system.ask(user_text)
-        self.signal_bus.display_message_signal.emit("小助手", bot_response)
-
-    def display_message(self, sender, message):
-        """在聊天窗口显示消息"""
-        self.chat_display.append(f"<b>{sender}：</b> {message}<br><br>")
-        self.chat_display.moveCursor(self.chat_display.textCursor().End)
-
-    def clear_chat(self):
-        """清空聊天历史"""
-        self.chat_display.clear()
-
-    def closeEvent(self, event):
-        """重写关闭事件，添加确认提示"""
-        reply = QMessageBox.question(self, '退出', '您确定要退出吗？',
-                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-        if reply == QMessageBox.Yes:
-            event.accept()
-        else:
-            event.ignore()
-
-# ---------------------------------------------------------
-
+def print_help():
+    print("""
+可用命令：
+  load <file1> [file2 ...]   加载一个或多个 JSON QA 文件
+  count                      显示已加载的 QA 对数
+  ask <your question>        向系统提问（或直接输入问题并回车）
+  history                    显示问答历史
+  save_history <file>        将问答历史保存为 JSON 文件
+  help                       显示此帮助
+  exit                       退出
+""".strip())
 def main():
-    """主函数，运行聊天应用程序"""
-    app = QApplication(sys.argv)
-    window = ChatWindow()
-    window.show()
-    sys.exit(app.exec_())
+    preload = [
+        {'question': '如何重置密码？', 'answer': '请在设置页面点击“重置密码”，然后按照提示操作。'},
+        {'question': '如何注册账号？', 'answer': '点击首页的注册按钮并填写注册信息即可。'},
+        {'question': '退款政策是什么？', 'answer': '请参见我们的退款政策页面，通常在30天内可申请退款。'},
+    ]
+    qa_system = QASystem(weight_tfidf=0.2, weight_lcs=0.8, preload=preload)
+    print("命令行问答系统（TF-IDF + FAISS 0.2 & LCS 0.8）——已加载预置数据")
+    print("提示：确保已安装依赖：jieba scikit-learn faiss-cpu")
+    print_help()
+    while True:
+        try:
+            cmd = input("\n> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\n退出。")
+            break
+        if cmd == "":
+            continue
+        parts = cmd.split()
+        cmd0 = parts[0].lower()
 
-# ---------------------------------------------------------
-
+        if cmd0 == 'load':
+            if len(parts) < 2:
+                print("请提供至少一个文件路径，例如: load data.json")
+                continue
+            files = parts[1:]
+            total_added = 0
+            for fp in files:
+                if not os.path.isfile(fp):
+                    print(f"[警告] 文件不存在：{fp}")
+                    continue
+                qa_list = load_qa_from_file(fp)
+                if qa_list is not None:
+                    added = qa_system.add_qa_list(qa_list, rebuild_index=True)
+                    total_added += added
+                    print(f"从 '{os.path.basename(fp)}' 加载了 {added} 个新的 QA 对。")
+            print(f"共添加 {total_added} 个新的 QA 对。当前总数：{len(qa_system.qa_list)}")
+        elif cmd0 == 'count':
+            print(f"已加载 QA 对数：{len(qa_system.qa_list)}")
+        elif cmd0 == 'ask':
+            if not qa_system.qa_list:
+                print("请先使用 load 命令或使用预置数据。")
+                continue
+            question = cmd[len('ask '):].strip()
+            if question == "":
+                print("问题为空。")
+                continue
+            answer, score, details = qa_system.ask(question)
+            print(f"小助手：{answer}  (combined={score:.3f}, tfidf={details[1]:.3f}, lcs={details[2]:.3f})")
+        elif cmd0 == 'history':
+            for i, h in enumerate(qa_system.history, 1):
+                print(f"{i}. Q: {h['question']} -> A: {h['answer']} (combined={h['score']:.3f}, tfidf={h['tfidf']:.3f}, lcs={h['lcs']:.3f})")
+        elif cmd0 == 'save_history':
+            if len(parts) < 2:
+                print("请指定输出文件名，例如: save_history history.json")
+                continue
+            out = parts[1]
+            try:
+                with open(out, 'w', encoding='utf-8') as f:
+                    json.dump(qa_system.history, f, ensure_ascii=False, indent=2)
+                print(f"历史已保存到 {out}")
+            except Exception as e:
+                print(f"[错误] 保存失败：{e}")
+        elif cmd0 == 'help':
+            print_help()
+        elif cmd0 == 'exit':
+            print("退出。")
+            break
+        else:
+            # 非命令则视为直接提问（若有数据）
+            if qa_system.qa_list:
+                question = cmd
+                answer, score, details = qa_system.ask(question)
+                print(f"小助手：{answer}  (combined={score:.3f}, tfidf={details[1]:.3f}, lcs={details[2]:.3f})")
+            else:
+                print("未知命令。输入 'help' 查看可用命令。")
 if __name__ == '__main__':
     main()
